@@ -1,0 +1,79 @@
+div {
+    border:1px solid black;
+}
+
+#storeContainer {
+    float: left;
+    width: 100%;
+}
+
+#buyMineContainer{
+    border: 1px solid red;
+    text-align: right;
+    vertical-align: bottom;
+    position: relative;
+    /* padding-bottom: 15px; */
+    width: 40%;
+    float: left;
+}
+
+#buyMineImage{
+    width: 100%;
+    height: auto;
+    align-self: left;
+}
+
+#buyMineText{
+    position: absolute;
+    bottom: 0px;
+    right: 0px;
+    font-size: 200%;
+    font-weight: bold;
+    color: red;
+}
+
+#buyFactoryContainer{
+    border: 1px solid red;
+    text-align: right;
+    vertical-align: bottom;
+    position: relative;
+    /* padding-bottom: 15px; */
+    width: 40%;
+    float: right;
+}
+
+#buyFactoryImage{
+    width: 100%;
+    height: auto;
+    align-self: left;
+}
+
+#buyFactoryText{
+    position: absolute;
+    bottom: 0px;
+    right: 0px;
+    font-size: 200%;
+    font-weight: bold;
+    color: red;
+}
+
+.countContainer{
+    border: 1px solid black;
+    /* width: 500px; */
+    overflow: hidden; /* will contain if #first is longer than #second */
+}
+
+.countImage{
+    float:left; /* add this */
+    border: 1px solid red;
+}
+
+.countText{
+    border: 1px solid green;
+    overflow: hidden;
+    font-size: 30px;
+}
+
+.recipeIcon{
+    width: 50px;
+}
