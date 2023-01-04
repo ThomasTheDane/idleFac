@@ -13,7 +13,7 @@ class Block {
 
     handleClick(){
         if(this.type != "dirt"){
-            this.game.inventory.inventory[this.type] += 1;
+            this.game.inventory[this.type] += 1;
 
             // console.log(this.game);
         }
@@ -165,7 +165,32 @@ class Factory extends Dragable {
     }
 }
 
-class Store {
+
+class Inventory {
+
+}
+
+class Game {
+    pixiApp;
+    gameGrid;
+    
+
+    mines = [];
+    factories = [];
+
+    recipes = {
+        ironPlate : {products: {ironPlate: 1} , costs:{ironOre: 10}, duration: 3},
+        steelPlate: {ironPlate: 5}        
+    }
+
+    countIconSize = 50;
+
+    inventory = {
+        ironOre: 100,
+        ironPlate: 0
+    };
+    rates = {ironOre : 0}
+
     buyMineLevelSet;
     buyFactoryLevelSet;
 
@@ -185,11 +210,27 @@ class Store {
         {ironOre: 80}
     ];
 
+    dragTarget = null;
+    dragEntity = null;
+    removedFromBlock;
+    self;
     
-    constructor(game){
-        this.game = game;
-        // this.buyMineLevelSet = 1;
-        // this.buyFactoryLevelSet = 1;
+    constructor(){
+        self = this;
+
+        let gameWindowSize = Math.min(window.innerWidth / 2, window.innerHeight);
+        this.pixiApp = new PIXI.Application({ width: gameWindowSize, height: gameWindowSize, background: '#1099bb' });
+        this.gameGrid = new GameGrid({game: this, gridWidth: 10, gridHeight: 10, gameWindowSize: gameWindowSize})
+        document.getElementById("gameContainer").appendChild(this.pixiApp.view);
+
+        this.gameGrid.setupNewGame();
+        this.gameGrid.drawGrid(this.gameGrid);
+
+        this.addCountUIElement("ironOre");
+        this.addCountUIElement("ironPlate");
+        this.addCountUIElement("steelPlate");
+        this.updateCountText();
+
 
         document.getElementById("buyMineContainer").onmousedown = () => {
             this.handleBuyMine();
@@ -200,7 +241,157 @@ class Store {
 
         this.addRecipeUIElement("ironPlate");
         this.addRecipeUIElement("steelPlate");
+
+
+        this.pixiApp.stage.interactive = true;
+        this.pixiApp.stage.hitArea = this.pixiApp.screen;
+        this.pixiApp.stage.on('pointerup', this.onDragEnd);
+        this.pixiApp.stage.on('pointerupoutside', this.onDragEnd);
+
+        this.pixiApp.ticker.add(dt => {
+            // console.log(dt);
+        
+            this.productionIncrement(dt / 60);
+            this.updateCountText();
+        });
     }
+
+    onDragStart() {
+        this.sprite.alpha = 0.5;
+        self.dragEntity = this;
+        self.dragTarget = this.sprite;
+        self.pixiApp.stage.on('pointermove', self.onDragMove);
+    
+        if(self.dragEntity.enabled){
+            self.dragEntity.enabled = false; 
+        }
+    
+        self.removedFromBlock = self.gameGrid.blocks[Math.floor(self.dragTarget.x / self.gameGrid.blockSize)][Math.floor(self.dragTarget.y / self.gameGrid.blockSize)];
+        self.removedFromBlock.occupied = false;
+    
+        self.updateAllRates();
+    }
+
+    onDragMove(event) {
+        if (self.dragTarget) {
+            self.dragTarget.parent.toLocal(event.global, null, self.dragTarget.position);
+        }
+    }
+    
+    onDragEnd() {
+        if (self.dragTarget) {
+    
+            let placedOnBlock = self.gameGrid.blocks[Math.floor(self.dragTarget.x / self.gameGrid.blockSize)][Math.floor(self.dragTarget.y / self.gameGrid.blockSize)];    
+            console.log("placing ",  self.dragEntity, " on ", placedOnBlock);
+
+            if(placedOnBlock == self.removedFromBlock && self.dragEntity.type == "factory"){
+                self.selectedFactory = self.dragEntity;
+                console.log("selecting factory ", self.selectedFactory);
+            }
+    
+            //snap to grid
+            self.dragTarget.x = placedOnBlock.sprite.x + (self.gameGrid.blockSize / 2);
+            self.dragTarget.y = placedOnBlock.sprite.y + (self.gameGrid.blockSize / 2);
+    
+            //merge check mines 
+            if(self.dragEntity.type == "mine"){
+                for(const index in self.mines){
+                    if(self.mines[index] != self.dragEntity){
+                        // console.log("checking ", mines[index], " against ", dragEntity);
+                        if(Math.floor(self.mines[index].sprite.x) == Math.floor(self.dragEntity.sprite.x) && Math.floor(self.mines[index].sprite.y) == Math.floor(self.dragEntity.sprite.y)){
+                            if(self.mines[index].level == self.dragEntity.level){
+                                console.log("merging ", self.mines[index], " with ", self.dragEntity);
+                                
+                                self.mines[index].sprite.parent.removeChild(self.mines[index].sprite);
+                                self.mines.splice(index, 1)
+                                // mines[index].sprite.destroy({children:true, texture:true, baseTexture:true});
+        
+                                self.dragEntity.level += 1;
+                                self.dragEntity.levelText.text = self.dragEntity.level;
+                                self.dragEntity.onBlock = placedOnBlock;
+        
+                                self.updateAllRates();
+                        
+                                // finish drag event stuff 
+                                self.pixiApp.stage.off('pointermove', self.onDragMove);
+                                self.dragTarget.alpha = 1;
+                                self.dragTarget = null;
+                                self.dragEntity = null;
+        
+                                // console.log("mines: ", mines);
+                                return;
+                            }else{ 
+                                //move the thing back where it came from 
+                                console.log("levels don't match, moving ", self.dragEntity, " back to ", self.removedFromBlock)
+                                self.dragTarget.x = self.removedFromBlock.sprite.x + (self.gameGrid.blockSize / 2);
+                                self.dragTarget.y = self.removedFromBlock.sprite.y + (self.gameGrid.blockSize / 2);
+                                self.pixiApp.stage.off('pointermove', self.onDragMove);
+                                self.dragTarget.alpha = 1;
+                                self.dragTarget = null;
+                                self.dragEntity = null;
+                                return;
+                            }
+        
+                        }
+                    }
+                }
+            }
+            if(self.dragEntity.type == "factory"){
+                for(const index in self.factories){
+                    if(self.factories[index] != self.dragEntity){
+                        // console.log("checking ", factories[index], " against ", dragEntity);
+                        if(Math.floor(self.factories[index].sprite.x) == Math.floor(self.dragEntity.sprite.x) && Math.floor(self.factories[index].sprite.y) == Math.floor(self.dragEntity.sprite.y)){
+                            if(self.factories[index].level == self.dragEntity.level){
+                                console.log("merging ", self.factories[index], " with ", self.dragEntity);
+                                
+                                self.factories[index].sprite.parent.removeChild(self.factories[index].sprite);
+                                self.factories.splice(index, 1)
+                                // factories[index].sprite.destroy({children:true, texture:true, baseTexture:true});
+        
+                                // update level, rates & set enabled of right - TODO 
+                                self.dragEntity.level += 1;
+                                self.dragEntity.levelText.text = self.dragEntity.level;
+                                self.dragEntity.onBlock = placedOnBlock;
+        
+                        
+        
+                                // finish drag event stuff 
+                                self.pixiApp.stage.off('pointermove', self.onDragMove);
+                                self.dragTarget.alpha = 1;
+                                self.dragTarget = null;
+                                self.dragEntity = null;
+        
+                                // console.log("mines: ", mines);
+                                return;
+                            }else{
+                                //move the thing back where it came from 
+                                onsole.log("levels don't match, moving ", self.dragEntity, " back to ", self.removedFromBlock)
+                                self.dragTarget.x = self.removedFromBlock.sprite.x + (self.gameGrid.blockSize / 2);
+                                self.dragTarget.y = self.removedFromBlock.sprite.y + (self.gameGrid.blockSize / 2);
+                                self.pixiApp.stage.off('pointermove', self.onDragMove);
+                                self.dragTarget.alpha = 1;
+                                self.dragTarget = null;
+                                self.dragEntity = null;
+                                return;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            placedOnBlock.occupied = true;
+            self.dragEntity.onBlock = placedOnBlock;
+    
+            self.dragEntity.enabled = true;
+        
+            self.pixiApp.stage.off('pointermove', self.onDragMove);
+            self.dragTarget.alpha = 1;
+            self.dragTarget = null;
+            self.dragEntity = null;
+        }
+    }
+
+
 
     handleBuyMine(){
         let level = 1;
@@ -212,16 +403,15 @@ class Store {
             return;
         }
 
-        let placingBlock = game.gameGrid.findRandomEmptySpot();
+        let placingBlock = this.gameGrid.findRandomEmptySpot();
         if(!placingBlock){
             return;
         }
 
-        let mine = new Mine({game: game, level: level, placingBlock: placingBlock});
+        let mine = new Mine({game: this, level: level, placingBlock: placingBlock});
 
-        game.mines.push(mine);
+        this.mines.push(mine);
     
-        this.game.inventory.updateAllRates();
     
     }
 
@@ -236,27 +426,26 @@ class Store {
         }
 
     
-        let placingBlock = game.gameGrid.findRandomEmptySpot();
+        let placingBlock = this.gameGrid.findRandomEmptySpot();
         if(!placingBlock){
             return;
         }
 
-        let factory = new Factory({game: game, level: level, placingBlock: placingBlock});
+        let factory = new Factory({game: this, level: level, placingBlock: placingBlock});
 
-        game.factories.push(factory);
+        this.factories.push(factory);
     
-        this.game.inventory.updateAllRates();
     }
     
     subtractCostFromInventory(costs){
         for(const aCost in costs){
-            this.game.inventory[aCost] -= costs[aCost];
+            this.inventory[aCost] -= costs[aCost];
         }
     }
     
     checkIfCanBuy(costs){
         for(const aCost in costs){
-            if(this.game.inventory[aCost] < costs[aCost]){
+            if(this.inventory[aCost] < costs[aCost]){
                 return false; 
             }
         }
@@ -271,33 +460,16 @@ class Store {
             if(this.selectedFactory){
                 console.log("Setting recipe: ", recipeName);
                 this.selectedFactory.recipe = recipeName;
-                this.game.inventory.updateAllRates();
             }
         }
 
         document.getElementById("recipesGrid").append(newRecipeUIElement);    
 
     }
-}
 
-class Inventory {
-    countIconSize = 50;
 
-    inventory = {
-        ironOre: 100,
-        ironPlate: 0
-    };
-    rates = {ironOre : 0}
-
-    constructor(game){
-        this.game = game;
-
-        this.addCountUIElement("ironOre");
-        this.addCountUIElement("ironPlate");
-        this.addCountUIElement("steelPlate");
-        this.updateCountText();
-    }
-
+    
+    
     addCountUIElement(type){
         let newCountUIElement = document.createElement('div');
         newCountUIElement.setAttribute("class", "countContainer")
@@ -334,23 +506,22 @@ class Inventory {
     updateAllRates(){
         this.resetRates();
 
-        for(const aMineIndex in this.game.mines){
+        for(const aMineIndex in this.mines){
             // rates[mines[aMineIndex].onBlock.type] += Math.pow(mines[aMineIndex].level, 2); // rate rises equal to total mines / factories 
 
-            this.rates[this.game.mines[aMineIndex].onBlock.type] += this.game.mines[aMineIndex].level;
-            // console.log(this.game.mines[aMineIndex])
+            this.rates[this.mines[aMineIndex].onBlock.type] += this.mines[aMineIndex].level;
         }
 
-        for(const aFactoryIndex in this.game.factories){
-            let aFactory = this.game.factories[aFactoryIndex];
+        for(const aFactoryIndex in this.factories){
+            let aFactory = this.factories[aFactoryIndex];
             if(aFactory.recipe){
                 console.log("Setting rate based on recipe: ", aFactory.recipe);
                 // ironPlate : {products: {ironPlate: 1} , costs:{ironOre: 10}},
-                for(const aCost in game.recipes[aFactory.recipe].costs){
-                    this.rates[aCost] -= game.recipes[aFactory.recipe].costs[aCost]
+                for(const aCost in this.recipes[aFactory.recipe].costs){
+                    this.rates[aCost] -= this.recipes[aFactory.recipe].costs[aCost]
                 }
-                for(const aProduct in game.recipes[aFactory.recipe].products){
-                    this.rates[aProduct] += game.recipes[aFactory.recipe].products[aProduct];
+                for(const aProduct in this.recipes[aFactory.recipe].products){
+                    this.rates[aProduct] += this.recipes[aFactory.recipe].products[aProduct];
                 }
             }
         }
@@ -373,24 +544,17 @@ class Inventory {
         }
     }
 
-    addRatesToInventory(amountTime){
-        for (const aType in this.rates){
-            this.inventory[aType] += this.rates[aType] * amountTime;
-            // console.log("Adding ", rates[aType] * amountTime, "to ", aType ); 
-        }
-    }
-
     productionIncrement(amountTime) {
-        for(const index in game.mines){
-            let aMine = game.mines[index]
+        for(const index in this.mines){
+            let aMine = this.mines[index]
             this.inventory[aMine.onBlock.type] += Math.pow(2, aMine.level) * amountTime;
         }
-        for(const index in game.factories){
-            let aFactory = game.factories[index];
+        for(const index in this.factories){
+            let aFactory = this.factories[index];
             if(aFactory.recipe){
                 if(aFactory.crafting){
                     aFactory.timeCrafting += amountTime; 
-                    if(aFactory.timeCrafting >= game.recipes[aFactory.recipe].duration){
+                    if(aFactory.timeCrafting >= this.recipes[aFactory.recipe].duration){
                         console.log("Finished crafting, ", aFactory.recipe);
                         aFactory.timeCrafting = 0;
                         this.inventory[aFactory.recipe] += 1;
@@ -400,7 +564,7 @@ class Inventory {
                 if(!aFactory.crafting){
                     //check if can start a new one 
                     let canCraft = true;
-                    let costs = game.recipes[aFactory.recipe].costs; 
+                    let costs = this.recipes[aFactory.recipe].costs; 
                     for(const aCost in costs){
                         if(this.inventory[aCost] < costs[aCost]){
                             canCraft = false; 
@@ -415,196 +579,6 @@ class Inventory {
                 }
                 
             }
-        }
-    }
-}
-
-class Game {
-    pixiApp;
-    gameGrid;
-    
-
-    mines = [];
-    factories = [];
-
-    recipes = {
-        ironPlate : {products: {ironPlate: 1} , costs:{ironOre: 10}, duration: 3},
-        steelPlate: {ironPlate: 5}        
-    }
-
-    inventory; 
-    store;
-
-
-    dragTarget = null;
-    dragEntity = null;
-    removedFromBlock;
-    self;
-    
-    constructor(){
-        self = this;
-
-        let gameWindowSize = Math.min(window.innerWidth / 2, window.innerHeight);
-        this.pixiApp = new PIXI.Application({ width: gameWindowSize, height: gameWindowSize, background: '#1099bb' });
-        this.gameGrid = new GameGrid({game: this, gridWidth: 10, gridHeight: 10, gameWindowSize: gameWindowSize})
-        document.getElementById("gameContainer").appendChild(this.pixiApp.view);
-
-        this.gameGrid.setupNewGame();
-        this.gameGrid.drawGrid(this.gameGrid);
-
-        this.store = new Store(this);
-        this.inventory = new Inventory(this);
-
-        this.pixiApp.stage.interactive = true;
-        this.pixiApp.stage.hitArea = this.pixiApp.screen;
-        this.pixiApp.stage.on('pointerup', this.onDragEnd);
-        this.pixiApp.stage.on('pointerupoutside', this.onDragEnd);
-
-        this.pixiApp.ticker.add(dt => {
-            // console.log(dt);
-        
-            // this.inventory.addRatesToInventory(dt / 60);
-            this.inventory.productionIncrement(dt / 60);
-            this.inventory.updateCountText();
-        });
-    }
-
-    onDragStart() {
-        this.sprite.alpha = 0.5;
-        self.dragEntity = this;
-        self.dragTarget = this.sprite;
-        self.pixiApp.stage.on('pointermove', self.onDragMove);
-    
-        if(self.dragEntity.enabled){
-            self.dragEntity.enabled = false; 
-        }
-    
-        self.removedFromBlock = self.gameGrid.blocks[Math.floor(self.dragTarget.x / self.gameGrid.blockSize)][Math.floor(self.dragTarget.y / self.gameGrid.blockSize)];
-        self.removedFromBlock.occupied = false;
-    
-        self.inventory.updateAllRates();
-    }
-
-    onDragMove(event) {
-        if (self.dragTarget) {
-            self.dragTarget.parent.toLocal(event.global, null, self.dragTarget.position);
-        }
-    }
-    
-    onDragEnd() {
-        if (self.dragTarget) {
-    
-            let placedOnBlock = self.gameGrid.blocks[Math.floor(self.dragTarget.x / self.gameGrid.blockSize)][Math.floor(self.dragTarget.y / self.gameGrid.blockSize)];    
-            console.log("placing ",  self.dragEntity, " on ", placedOnBlock);
-
-            if(placedOnBlock == self.removedFromBlock && self.dragEntity.type == "factory"){
-                self.store.selectedFactory = self.dragEntity;
-                console.log("selecting factory ", self.store.selectedFactory);
-            }
-    
-            //snap to grid
-            self.dragTarget.x = placedOnBlock.sprite.x + (self.gameGrid.blockSize / 2);
-            self.dragTarget.y = placedOnBlock.sprite.y + (self.gameGrid.blockSize / 2);
-    
-            //merge check mines 
-            if(self.dragEntity.type == "mine"){
-                for(const index in self.mines){
-                    if(self.mines[index] != self.dragEntity){
-                        // console.log("checking ", mines[index], " against ", dragEntity);
-                        if(Math.floor(self.mines[index].sprite.x) == Math.floor(self.dragEntity.sprite.x) && Math.floor(self.mines[index].sprite.y) == Math.floor(self.dragEntity.sprite.y)){
-                            if(self.mines[index].level == self.dragEntity.level){
-                                console.log("merging ", self.mines[index], " with ", self.dragEntity);
-                                
-                                self.mines[index].sprite.parent.removeChild(self.mines[index].sprite);
-                                self.mines.splice(index, 1)
-                                // mines[index].sprite.destroy({children:true, texture:true, baseTexture:true});
-        
-                                self.dragEntity.level += 1;
-                                self.dragEntity.levelText.text = self.dragEntity.level;
-                                self.dragEntity.onBlock = placedOnBlock;
-        
-                                self.inventory.updateAllRates();
-                        
-                                // finish drag event stuff 
-                                self.pixiApp.stage.off('pointermove', self.onDragMove);
-                                self.dragTarget.alpha = 1;
-                                self.dragTarget = null;
-                                self.dragEntity = null;
-        
-                                // console.log("mines: ", mines);
-                                return;
-                            }else{ 
-                                //move the thing back where it came from 
-                                console.log("levels don't match, moving ", self.dragEntity, " back to ", self.removedFromBlock)
-                                self.dragTarget.x = self.removedFromBlock.sprite.x + (self.gameGrid.blockSize / 2);
-                                self.dragTarget.y = self.removedFromBlock.sprite.y + (self.gameGrid.blockSize / 2);
-                                self.pixiApp.stage.off('pointermove', self.onDragMove);
-                                self.dragTarget.alpha = 1;
-                                self.dragTarget = null;
-                                self.dragEntity = null;
-                                self.inventory.updateAllRates();
-                                return;
-                            }
-        
-                        }
-                    }
-                }
-            }
-            if(self.dragEntity.type == "factory"){
-                for(const index in self.factories){
-                    if(self.factories[index] != self.dragEntity){
-                        // console.log("checking ", factories[index], " against ", dragEntity);
-                        if(Math.floor(self.factories[index].sprite.x) == Math.floor(self.dragEntity.sprite.x) && Math.floor(self.factories[index].sprite.y) == Math.floor(self.dragEntity.sprite.y)){
-                            if(self.factories[index].level == self.dragEntity.level){
-                                console.log("merging ", self.factories[index], " with ", self.dragEntity);
-                                
-                                self.factories[index].sprite.parent.removeChild(self.factories[index].sprite);
-                                self.factories.splice(index, 1)
-                                // factories[index].sprite.destroy({children:true, texture:true, baseTexture:true});
-        
-                                // update level, rates & set enabled of right - TODO 
-                                self.dragEntity.level += 1;
-                                self.dragEntity.levelText.text = self.dragEntity.level;
-                                self.dragEntity.onBlock = placedOnBlock;
-        
-                                self.inventory.updateAllRates();
-                        
-        
-                                // finish drag event stuff 
-                                self.pixiApp.stage.off('pointermove', self.onDragMove);
-                                self.dragTarget.alpha = 1;
-                                self.dragTarget = null;
-                                self.dragEntity = null;
-        
-                                // console.log("mines: ", mines);
-                                return;
-                            }else{
-                                //move the thing back where it came from 
-                                onsole.log("levels don't match, moving ", self.dragEntity, " back to ", self.removedFromBlock)
-                                self.dragTarget.x = self.removedFromBlock.sprite.x + (self.gameGrid.blockSize / 2);
-                                self.dragTarget.y = self.removedFromBlock.sprite.y + (self.gameGrid.blockSize / 2);
-                                self.pixiApp.stage.off('pointermove', self.onDragMove);
-                                self.dragTarget.alpha = 1;
-                                self.dragTarget = null;
-                                self.dragEntity = null;
-                                self.inventory.updateAllRates();
-                                return;
-                            }
-                        }
-                    }
-                }
-            }
-            
-            placedOnBlock.occupied = true;
-            self.dragEntity.onBlock = placedOnBlock;
-    
-            self.inventory.updateAllRates();
-            self.dragEntity.enabled = true;
-        
-            self.pixiApp.stage.off('pointermove', self.onDragMove);
-            self.dragTarget.alpha = 1;
-            self.dragTarget = null;
-            self.dragEntity = null;
         }
     }
 }
