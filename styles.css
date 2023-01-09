@@ -2,53 +2,22 @@ div {
     border:1px solid black;
 }
 
-#storeContainer {
-    float: left;
-    width: 100%;
-}
-
-#buyMineContainer{
+.buyIconContainer{
     border: 1px solid red;
     text-align: right;
     vertical-align: bottom;
     position: relative;
-    /* padding-bottom: 15px; */
-    width: 40%;
-    float: left;
+    padding-bottom: 15px;
 }
 
-#buyMineImage{
+
+.buyIconImage{
     width: 100%;
     height: auto;
     align-self: left;
 }
 
-#buyMineText{
-    position: absolute;
-    bottom: 0px;
-    right: 0px;
-    font-size: 200%;
-    font-weight: bold;
-    color: red;
-}
-
-#buyFactoryContainer{
-    border: 1px solid red;
-    text-align: right;
-    vertical-align: bottom;
-    position: relative;
-    /* padding-bottom: 15px; */
-    width: 40%;
-    float: right;
-}
-
-#buyFactoryImage{
-    width: 100%;
-    height: auto;
-    align-self: left;
-}
-
-#buyFactoryText{
+.buyIconLevelText{
     position: absolute;
     bottom: 0px;
     right: 0px;
@@ -76,4 +45,23 @@ div {
 
 .recipeIcon{
     width: 50px;
+}
+
+
+.rateText {
+    /* display: none; */
+}
+
+.buyWrapper {
+    display: grid;
+    grid-template-columns: 50% 50% ;
+    grid-gap: 10px;
+}
+.buyLevelSetControls{
+    grid-column-start: 1;
+    grid-column-end: 3;
+}
+
+#levelSelectSlider{
+    width: 100%;
 }
