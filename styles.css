@@ -17,6 +17,10 @@ div {
     align-self: left;
 }
 
+.greyedOut{
+  filter: grayscale(100%);
+}
+
 .buyIconLevelText{
     position: absolute;
     bottom: 0px;
