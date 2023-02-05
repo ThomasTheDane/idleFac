@@ -21,8 +21,8 @@ class Block {
 }
 
 class GameGrid {
-    gridWidth = 10;
-    gridHeight = 10;
+    gridWidth;
+    gridHeight;
     blockSize;
     blocks; 
     blockContainer; 
@@ -85,8 +85,22 @@ class GameGrid {
         }
         this.blocks[this.gridHeight / 2][this.gridWidth / 2].type = "ironOre";
     }
+
+    clearSprites(){
+        for (let x = 0; x < this.gridWidth; x++) {
+            for (let y = 0; y < this.gridHeight; y++) {
+                let block = this.blocks[x][y];
+                if(block.sprite && block.sprite.parent){
+                    block.sprite.parent.removeChild(block.sprite);
+                }
+            }
+        }
+    }
     
     drawGrid(){
+        this.clearSprites();
+        this.blockSize = this.gameWindowSize / this.gridWidth; 
+
         for (let x = 0; x < this.gridWidth; x++) {
             for (let y = 0; y < this.gridHeight; y++) {
                 let block = this.blocks[x][y];
@@ -122,6 +136,26 @@ class GameGrid {
         if(emptySpots.length > 0){
             return emptySpots[Math.floor(Math.random() * emptySpots.length)]
         }
+    }
+
+    expandGridDownRight1(){
+        for (let y = 0; y < this.gridHeight; y++) {
+            this.blocks[y].push(new Block({game: this.game, type: "ironOre", occupied:false}))
+        }
+        this.gridWidth += 1;
+        
+        let newRow = new Array(this.gridWidth);
+        for (let x = 0; x < this.gridWidth; x++) {
+            newRow[x] = new Block({game: this.game, type: "ironOre", occupied:false});
+        }
+        this.blocks.push(newRow);        
+        // this.blocks[y].push([new Block({game: this.game, type: "ironOre", occupied:false})])
+
+
+        this.gridHeight += 1;
+
+        this.clearSprites();
+        this.drawGrid();
     }
 
 }
@@ -302,14 +336,23 @@ class Game {
     mineCosts;
     factoryCosts = Array();
     
-    ores = ["dirt", "ironOre", "copperOre"]
-
+    
     techTree = {
-        expansion3: {cost: {dirt: 10}, prerequisites: []},
+        expansion3: {name: "expansion3", cost: {dirt: 10}, prerequisites: [], enact: () => {
+            this.gameGrid.expandGridDownRight1();
+        }},
         expansion5: {cost: {dirt: 1000}, prerequisites: ["expansion3"]},
         expansion7: {cost: {dirt: 1000000}, prerequisites: ["expansion5"]},
         expansion9: {cost: {dirt: 10000000000}, prerequisites: ["expansion5"]}
     }
+
+    
+    ores = {
+        dirt : {duration: 1},
+        ironOre : {duration: 2},
+        copperOre: {duration: 4}
+    }
+    
 
     recipesFactorio = {
         ironPlate : {products: {ironPlate: 1} , costs:{ironOre: 1}, duration: 3.2},
@@ -337,20 +380,28 @@ class Game {
         // greenCircuit : {products: {greenCircuit: 1} , costs:{copperCable: 3}, duration: 1.25},        
     }
 
-    recipes = {
-        ironPlate : {products: {ironPlate: 1} , costs:{ironOre: 16}, duration: 2},
-        steelPlate : {products: {steelPlate: 1} , costs:{ironPlate: 16}, duration: 5},
-        ironGear : {products: {ironGear: 1} , costs:{steelPlate: 16}, duration: 10},
+    recipesV4 = { // V4
+        ironPlate : {products: {ironPlate: 1} , costs:{ironOre: 10}, duration: 2},
+        copperPlate : {products: {copperPlate: 1} , costs:{copperOre: 10}, duration: 4},
+                
+        ironGear : {products: {ironGear: 1} , costs:{ironPlate: 10}, duration: 2},
+        copperCable : {products: {copperCable: 2} , costs:{copperPlate: 10}, duration: 4},
         
-        // copperPlate : {products: {copperPlate: 1} , costs:{copperOre: 1}, duration: 5},
-        // copperCable : {products: {copperCable: 2} , costs:{copperPlate: 10}, duration: 10},
-        // greenCircuit : {products: {greenCircuit: 1} , costs:{copperCable: 3}, duration: 1.25},        
-        
+        engine : {products: {engine: 1} , costs:{ironGear: 10, ironPlate: 20}, duration: 2},
+        greenCircuit : {products: {greenCircuit: 1} , costs:{copperCable: 10, copperPlate: 20}, duration: 4},
     }
 
+    recipes = { // V5
+        ironPlate : {products: {ironPlate: 1} , costs:{ironOre: 10}, duration: 2},
+        copperPlate : {products: {copperPlate: 1} , costs:{copperOre: 10}, duration: 4},
+                
+        ironGear : {products: {ironGear: 1} , costs:{ironPlate: 10}, duration: 2},
+        copperCable : {products: {copperCable: 2} , costs:{copperPlate: 10}, duration: 4},
+        
+        engine : {products: {engine: 1} , costs:{ironGear: 10, ironPlate: 20}, duration: 2},
+        greenCircuit : {products: {greenCircuit: 1} , costs:{copperCable: 10, copperPlate: 20}, duration: 4},
+    }
 
-    
-    //doubles up to 5 then has to be processed
     mineCostsV1 = [
         {ironOre: 100},
         {ironOre: 200},
@@ -385,7 +436,7 @@ class Game {
         {ironGear: 800},
         {ironGear: 1600}
     ];
-    mineCosts = [ 
+    mineCostsV3 = [ 
         {ironOre: 100},
         {ironOre: 200},
         {ironOre: 400},
@@ -402,6 +453,83 @@ class Game {
         {steelPlate: 800},
         {steelPlate: 1600},
     ];
+
+    mineCostsV3 = [ 
+        {ironOre: 100},
+        {ironOre: 200},
+        {ironOre: 400},
+        {ironOre: 800},
+        {ironOre: 1600}, // time: 1600
+       
+        {ironOre: 100},
+        {ironOre: 200},
+        {ironOre: 400},
+        {ironOre: 800},
+        {ironOre: 1600},
+        
+        {ironPlate: 100}, //time: 1600 mine time + 200 processing time 
+        {ironPlate: 200},
+        {ironPlate: 400},
+        {ironPlate: 800},
+        {ironPlate: 1600},        
+        {steelPlate: 100},
+        {steelPlate: 200},
+        {steelPlate: 400},
+        {steelPlate: 800},
+        {steelPlate: 1600},
+    ];
+
+    mineCosts = [ // V4
+    {ironOre: 100},  //1 : 100s 
+    {ironOre: 200},  //2 : 200s 
+    {ironOre: 400},  //3 : 400s
+    {ironOre: 800},  
+    {ironOre: 1600}, 
+   
+    {copperOre: 200},
+    {copperOre: 400},
+    {copperOre: 800},
+    {copperOre: 1600},
+    {copperOre: 3200},
+
+    {ironPlate: 100},
+    {ironPlate: 200},  
+    {ironPlate: 400},  
+    {ironPlate: 800},  
+    {ironPlate: 1600},  
+    
+    {copperPlate: 100},
+    {copperPlate: 200},
+    {copperPlate: 400},
+    {copperPlate: 800},
+    {copperPlate: 1600},
+
+    {ironGear: 100},
+    {ironGear: 200},
+    {ironGear: 400},
+    {ironGear: 800},
+    {ironGear: 1600},
+
+    {copperCable: 100},
+    {copperCable: 200},
+    {copperCable: 400},
+    {copperCable: 800},
+    {copperCable: 1600},
+
+    {engine: 100},
+    {engine: 200},
+    {engine: 400},
+    {engine: 800},
+    {engine: 1600},
+
+    {greenCircuit: 100},
+    {greenCircuit: 200},
+    {greenCircuit: 400},
+    {greenCircuit: 800},
+    {greenCircuit: 1600},
+
+];
+
     // mineCosts = [
     //     {ironOre: 10}, 
     //     {ironPlate: 10},
@@ -432,12 +560,13 @@ class Game {
 
         let gameWindowSize = Math.min(window.innerWidth / 2, window.innerHeight);
         this.pixiApp = new PIXI.Application({ width: gameWindowSize, height: gameWindowSize, background: '#1099bb' });
-        this.gameGrid = new GameGrid({game: this, gridWidth: 10, gridHeight: 10, gameWindowSize: gameWindowSize})
+        this.gameGrid = new GameGrid({game: this, gridWidth: 5, gridHeight: 5, gameWindowSize: gameWindowSize})
         document.getElementById("gameContainer").appendChild(this.pixiApp.view);
 
         // this.gameGrid.setupNewGame();
         this.gameGrid.setupNewGameWithMap(this.gameGrid.gridMap1);
-        this.gameGrid.drawGrid(this.gameGrid);
+        this.gameGrid.drawGrid();
+        // this.gameGrid.expandGridDownRight1();
 
         this.createCountUI();
 
@@ -451,8 +580,8 @@ class Game {
             this.handleBuy("factory");
         }
 
-
         this.createRecipeUI();
+        this.addTechTreeItem(this.techTree.expansion3);
         
         document.getElementById("levelSelectSlider").addEventListener("input", () => {
             this.renderCostsOnUI();
@@ -563,7 +692,7 @@ class Game {
                             return false;
                         }else{
                             //merge! 
-                            // TODO merging can cause a resource to go negative 
+                            // TODO merging can cause a resource to go negative - if 
                             console.log("merging ", thing, " with ", self.dragEntity);
                             
                             thing.sprite.parent.removeChild(thing.sprite);
@@ -572,6 +701,7 @@ class Game {
                                 removeItem(self.mines, thing);
                             }
                             if(thing.type == "factory"){
+                                //TODO: if one is not, destroy that one instead to preserve progress 
                                 if(!self.dragEntity.recipe){
                                     self.dragEntity.setRecipe(thing.recipe);
                                 }
@@ -589,11 +719,6 @@ class Game {
                             self.dragTarget.alpha = 1;
                             self.dragTarget = null;
                             self.dragEntity = null;
-    
-                            // console.log("mines: ", mines);
-                            // return materials 
-                            if(thing.type == "factory"){
-                            }
 
                             self.calcRates();
                             normalPlace = false;
@@ -626,8 +751,8 @@ class Game {
     
     initializeInventoryAndRates(){
         for(const anOre in this.ores){
-            this.inventory[this.ores[anOre]] = 0;
-            this.rates[this.ores[anOre]] = 0;
+            this.inventory[anOre] = 0;
+            this.rates[anOre] = 0;
         }
         
         for(const aRecipe in this.recipes){
@@ -717,7 +842,7 @@ class Game {
     productionIncrement(amountTime) {
         for(const index in this.mines){
             let aMine = this.mines[index]
-            this.inventory[aMine.onBlock.type] += aMine.power() * amountTime;
+            this.inventory[aMine.onBlock.type] += (aMine.power() / this.ores[aMine.onBlock.type].duration) * amountTime;
         }
         for(const index in this.factories){
             let aFactory = this.factories[index];
@@ -772,7 +897,7 @@ class Game {
         for(const index in this.mines){
             let aMine = this.mines[index]
             
-            this.rates[aMine.onBlock.type] += aMine.power();
+            this.rates[aMine.onBlock.type] += (aMine.power() / this.ores[aMine.onBlock.type].duration);
             
         }
 
@@ -824,8 +949,8 @@ class Game {
 
     setCountUIHiddenOrShown(){
         for(const aType in this.ores){
-            let aCountContainer = document.getElementById("countContainer-" + this.ores[aType]);
-            if(this.inventory[this.ores[aType]] == 0){
+            let aCountContainer = document.getElementById("countContainer-" + aType);
+            if(this.inventory[aType] == 0){
                 aCountContainer.style.display = "none";
             }else{
                 aCountContainer.style.display = "block";
@@ -843,7 +968,7 @@ class Game {
 
     createCountUI(){
         for(const anOre in this.ores){
-            this.addCountUIElement(this.ores[anOre]);
+            this.addCountUIElement(anOre);
         }
         for(const aRecipe in this.recipes){
             this.addCountUIElement(aRecipe);
@@ -939,13 +1064,39 @@ class Game {
         
     }
 
+    /// Tech rendering 
+    addTechTreeItem(item){
+        let newItemUIElement = document.createElement('div');
+        newItemUIElement.setAttribute("class", "techTreeItemContainer");
+        newItemUIElement.setAttribute("id", "techTreeItem-" + item.name);
+
+        let newItemUIElementImage = document.createElement('img');
+        newItemUIElementImage.setAttribute('src', "graphics/" + item.name + "Tech.png");
+        newItemUIElementImage.setAttribute('width', this.countIconSize);
+        newItemUIElementImage.setAttribute('height', this.countIconSize);
+        newItemUIElementImage.setAttribute('class', "countImage")
+        newItemUIElement.appendChild(newItemUIElementImage);
+
+        newItemUIElement.onmousedown = item.enact;
+
+        document.getElementById("techTree").appendChild(newItemUIElement);        
+    }
+
     ///////////////////////////////
     ////////    Utility    ////////
     ///////////////////////////////
 
     formatNumber(inputNum){
-        if(inputNum < 10000000){
+        if(inputNum < 1000){ // 1000
             return inputNum.toLocaleString("en-US");
+        }else if(inputNum < 1000000){
+            return (inputNum / 1000).toFixed(2).toLocaleString("en-US") + " k";
+        }else if(inputNum < 1000000000){
+            return (inputNum / 1000000).toFixed(2).toLocaleString("en-US") + " M";
+        }else if(inputNum < 1000000000000){
+            return (inputNum / 1000000000).toFixed(2).toLocaleString("en-US") + " B";
+        }else if(inputNum < 1000000000000000){
+            return (inputNum / 1000000000000).toFixed(2).toLocaleString("en-US") + " T";
         }
         return parseFloat(inputNum).toExponential();
     }
@@ -974,3 +1125,9 @@ function removeItem(arr, value) {
 
 let game = new Game();
 
+
+
+// TODO Make mergable entities highlightable 
+// TODO Make it expandable 
+// TODO 
+// TODO Consider adding storage & electricity 
