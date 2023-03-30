@@ -27,6 +27,12 @@ class GameGrid {
     blocks;
     blockContainer;
 
+    rateRanges = {
+        dirt: 0.8,
+        ironOre: 0.9,
+        copperOre: 1.0,
+    }
+
     gridMap1 = [
         ["D", "D", "D", "D", "D", "D", "D", "D", "D", "D", "D"],
         ["D", "D", "D", "D", "D", "D", "D", "D", "D", "D", "D"],
@@ -41,7 +47,7 @@ class GameGrid {
         ["D", "D", "D", "D", "D", "D", "D", "D", "D", "D", "D"]
     ];
 
-    constructor({ game, gridWidth = 10, gridHeight = 10, gameWindowSize = Math.min(window.innerWidth / 2, window.innerHeight) }) {
+    constructor({ game, gridWidth, gridHeight, gameWindowSize = Math.min(window.innerWidth / 2, window.innerHeight) }) {
         this.game = game;
         this.gridWidth = gridWidth;
         this.gridHeight = gridHeight;
@@ -51,6 +57,7 @@ class GameGrid {
         this.blockContainer = new PIXI.Container();
         this.blockContainer.x = 0;
         this.blockContainer.y = 0;
+        this.blockContainer.sortableChildren = true;
         this.game.pixiApp.stage.addChild(this.blockContainer);
 
         this.blocks = new Array(gridHeight);
@@ -76,13 +83,29 @@ class GameGrid {
         }
     }
 
-    setupNewBasicGame() {
+    setupNewEmptyGame() {
         for (let x = 0; x < this.gridWidth; x++) {
             for (let y = 0; y < this.gridHeight; y++) {
                 this.blocks[y][x] = new Block({ game: this.game, type: "dirt", occupied: false });
             }
         }
-        this.blocks[this.gridHeight / 2][this.gridWidth / 2].type = "ironOre";
+    }
+
+    setupNewRandomGame() {
+        for (let x = 0; x < this.gridWidth; x++) {
+            for (let y = 0; y < this.gridHeight; y++) {
+                let randomNum = Math.random();
+                let pickedType;
+                for(let aType in this.rateRanges){
+                    if(randomNum < this.rateRanges[aType]){
+                        pickedType = aType;
+                        // console.log("picked block type: ", pickedType)
+                        break;
+                    }
+                }
+                this.blocks[y][x] = new Block({ game: this.game, type: pickedType, occupied: false });
+            }
+        }
     }
 
     clearSprites() {
@@ -106,6 +129,7 @@ class GameGrid {
 
                 block.sprite = PIXI.Sprite.from('graphics/' + block.type + "Tile" + '.png');
                 block.sprite.cursor = 'pointer';
+                block.sprite.zIndex = 1;
 
                 block.x = x;
                 block.y = y;
@@ -137,37 +161,61 @@ class GameGrid {
         }
     }
 
-    expandGridDownRight1() {
+    expandGridDownRight1Random() {
         for (let y = 0; y < this.gridHeight; y++) {
-            this.blocks[y].push(new Block({ game: this.game, type: "ironOre", occupied: false }))
+            let randomNum = Math.random();
+            let pickedType;
+            for(let aType in this.rateRanges){
+                if(randomNum < this.rateRanges[aType]){
+                    pickedType = aType;
+                    // console.log("picked block type: ", pickedType)
+                    break;
+                }
+            }
+
+            this.blocks[y].push(new Block({ game: this.game, type: pickedType, occupied: false }))
         }
         this.gridWidth += 1;
 
         let newRow = new Array(this.gridWidth);
         for (let x = 0; x < this.gridWidth; x++) {
-            newRow[x] = new Block({ game: this.game, type: "ironOre", occupied: false });
+            let randomNum = Math.random();
+            let pickedType;
+            for(let aType in this.rateRanges){
+                if(randomNum < this.rateRanges[aType]){
+                    pickedType = aType;
+                    // console.log("picked block type: ", pickedType)
+                    break;
+                }
+            }
+
+            newRow[x] = new Block({ game: this.game, type: pickedType, occupied: false });
         }
         this.blocks.push(newRow);
-        // this.blocks[y].push([new Block({game: this.game, type: "ironOre", occupied:false})])
-
 
         this.gridHeight += 1;
 
         this.clearSprites();
         this.drawGrid();
+
+        //update sprites size and position 
+        game.updateSizeOfDragables();
+        
     }
 
 }
 
 class Dragable {
     level;
+    recipe;
 
-    constructor({ game, level, placingBlock }) {
+    constructor({ game, level, placingBlock, recipe }) {
         this.sprite = PIXI.Sprite.from("graphics/mine.png");
 
         this.levelWhenStartedCrafting = level;
         this.onBlock = placingBlock;
         this.level = level;
+        this.recipe = recipe;
 
         this.sprite.x = placingBlock.x * game.gameGrid.blockSize + (game.gameGrid.blockSize / 2);
         this.sprite.y = placingBlock.y * game.gameGrid.blockSize + (game.gameGrid.blockSize / 2);
@@ -179,6 +227,7 @@ class Dragable {
         this.sprite.interactive = true;
         this.sprite.cursor = 'pointer';
         this.sprite.anchor.set(0.5);
+        this.sprite.zIndex = 3;
         this.sprite.on('pointerdown', game.onDragStart, this);
 
         const style = new PIXI.TextStyle({
@@ -201,26 +250,14 @@ class Dragable {
 }
 
 class Mine extends Dragable {
-    constructor({ game, level, placingBlock, recipe }) {
+    constructor({ game, level, placingBlock, recipe, tier }) {
 
         console.log("buying mine at location ", placingBlock, placingBlock.x, ", ", placingBlock.y)
 
-        super({ game, level, placingBlock });
+        super({ game, level, placingBlock, recipe });
 
-        this.recipeIcon = new PIXI.Sprite;
-        this.recipeIcon.anchor.set(0.5);
-        this.recipeIcon.width = this.sprite.width * .9;
-        this.recipeIcon.height = this.sprite.height * .9;
-        this.recipeIcon.texture = PIXI.Texture.from('graphics/' + recipe + '.png');
-
-        this.sprite.texture = PIXI.Texture.from('graphics/mine.png');
-        this.type = "mine"
-
-        // TODO: fix this and others so I don't have to remove and readd level text 
-        this.sprite.removeChild(this.levelText);
-        this.sprite.addChild(this.recipeIcon);
-        this.sprite.addChild(this.levelText);
-
+        this.sprite.texture = PIXI.Texture.from('graphics/' + recipe + 'Mine' + tier + '.png');
+        this.type = "mine";
     }
 
     power() {
@@ -230,55 +267,40 @@ class Mine extends Dragable {
 
 
 class Factory extends Dragable {
-    recipe;
     timeCrafting;
     crafting;
     levelWhenStartedCrafting;
+    waitingAtFull; 
 
-    constructor({ game, level, placingBlock, recipe }) {
+    constructor({ game, level, placingBlock, recipe, tier }) {
 
         console.log("buying factory at location ", placingBlock, placingBlock.x, ", ", placingBlock.y)
 
-        super({ game, level, placingBlock });
+        super({ game, level, placingBlock, recipe, tier });
 
-        this.sprite.texture = PIXI.Texture.from('graphics/factory.png');
+        this.sprite.texture = PIXI.Texture.from('graphics/' + recipe + 'Factory' + tier + '.png');
 
         this.type = "factory";
-        this.recipe = recipe;
         this.timeCrafting = 0;
         this.levelWhenStartedCrafting = level;
 
-        this.recipeIcon = new PIXI.Sprite;
-        this.recipeIcon.anchor.set(0.5);
-        this.recipeIcon.width = this.sprite.width * .9;
-        this.recipeIcon.height = this.sprite.height * .9;
-        this.recipeIcon.texture = PIXI.Texture.from('graphics/ironPlate.png');
-
-
         this.progressBarBackground = new PIXI.Sprite(PIXI.Texture.WHITE);
-        this.progressBarBackground.width = this.sprite.width;
-        this.progressBarBackground.height = game.gameGrid.blockSize / 8;
-        this.progressBarBackground.x = game.gameGrid.blockSize / -2;
-        this.progressBarBackground.y = (game.gameGrid.blockSize / 2) - (game.gameGrid.blockSize / 8);
+        this.sprite.addChild(this.progressBarBackground);
+
+        this.progressBarBackground.width = game.gameGrid.blockSize * (game.gameGrid.gridWidth / 10);
+        this.progressBarBackground.height = (game.gameGrid.blockSize / 8) * (game.gameGrid.gridWidth / 10);
+        this.progressBarBackground.x = (game.gameGrid.blockSize / -2) * (game.gameGrid.gridWidth / 10);
+        this.progressBarBackground.y = ((game.gameGrid.blockSize / 2) - (game.gameGrid.blockSize / 8)) * (game.gameGrid.gridWidth / 10);
 
         this.progressBar = new PIXI.Sprite(PIXI.Texture.WHITE);
         this.progressBar.tint = 0xff0000;
         this.progressBar.width = 0;
-        this.progressBar.height = (game.gameGrid.blockSize / 8) - 2;
-        this.progressBar.x = (game.gameGrid.blockSize / -2) + 1;
-        this.progressBar.y = (game.gameGrid.blockSize / 2) - (game.gameGrid.blockSize / 8) + 1;
+        this.progressBar.height = ((game.gameGrid.blockSize / 8) - 2) * (game.gameGrid.gridWidth / 10);
+        this.progressBar.x = ((game.gameGrid.blockSize / -2) + 1) * (game.gameGrid.gridWidth / 10);
+        this.progressBar.y = ((game.gameGrid.blockSize / 2) - (game.gameGrid.blockSize / 8) + 1) * (game.gameGrid.gridWidth / 10);
 
-        this.sprite.addChild(this.progressBarBackground);
+
         this.sprite.addChild(this.progressBar);
-
-
-        // this.sprite.parent.addChild(this.progressBar)
-        // game.gameGrid.blockContainer.addChild(this.progressBar);
-
-        this.sprite.removeChild(this.levelText);
-        this.sprite.addChild(this.recipeIcon);
-        this.sprite.addChild(this.levelText);
-
     }
 
     power() {
@@ -299,7 +321,7 @@ class Factory extends Dragable {
 
     updateProgressBar() {
         if (this.crafting) {
-            this.progressBar.width = (game.gameGrid.blockSize - 2) * (this.timeCrafting / game.recipes[this.recipe].duration);
+            this.progressBar.width = (game.gameGrid.blockSize - 2) * (this.timeCrafting / game.recipes[this.recipe].duration) * (game.gameGrid.gridWidth / 10);;
         }
     }
 
@@ -316,27 +338,17 @@ class Factory extends Dragable {
 class Storage extends Dragable {
     stores;
 
-    constructor({ game, level, placingBlock, recipe }) {
+    constructor({ game, level, placingBlock, recipe, tier }) {
 
         console.log("buying factory at location ", placingBlock, placingBlock.x, ", ", placingBlock.y)
 
         super({ game, level, placingBlock });
 
-        this.recipeIcon = new PIXI.Sprite;
-        this.recipeIcon.anchor.set(0.5);
-        this.recipeIcon.width = this.sprite.width * .9;
-        this.recipeIcon.height = this.sprite.height * .9;
-        this.recipeIcon.texture = PIXI.Texture.from('graphics/' + recipe + '.png');
         this.stores = recipe;
 
-
-        this.sprite.texture = PIXI.Texture.from('graphics/chest.png');
+        this.sprite.texture = PIXI.Texture.from('graphics/' + recipe + 'Storage' + tier + '.png');
         this.type = "storage"
 
-
-        this.sprite.removeChild(this.levelText);
-        this.sprite.addChild(this.recipeIcon);
-        this.sprite.addChild(this.levelText);
     }
 
     power() {
@@ -388,25 +400,16 @@ class Game {
 
     lastTimeProductionHappened;
 
+    commandCenter;
     mines = [];
     factories = [];
     storages = [];
 
     countIconSize = 50;
 
-    inventory = {
-        ironOre: 100,
-        ironPlate: 0
-    };
-    rates = {
-        ironOre: 0,
-        ironPlate: 0
-    }
-    storage = {
-        ironOre: 100,
-        ironPlate: 100
-    }
-
+    inventory = {};
+    rates = {}
+    storage = {}
 
     buyMineLevelSet = 1;
     buyFactoryLevelSet = 1;
@@ -416,7 +419,7 @@ class Game {
     techTree = {
         expansion3: {
             name: "expansion3", cost: { ironOre: 10 }, prerequisites: [], enact: () => {
-                this.gameGrid.expandGridDownRight1();
+                this.gameGrid.expandGridDownRight1Random();
             }
         },
         expansion5: { cost: { ironOre: 1000 }, prerequisites: ["expansion3"] },
@@ -437,21 +440,25 @@ class Game {
         ironGear: { products: { ironGear: 1 }, costs: { ironPlate: 10 }, duration: 2 },
         copperCable: { products: { copperCable: 2 }, costs: { copperPlate: 10 }, duration: 4 },
 
-        engine: { products: { engine: 1 }, costs: { ironGear: 10, ironPlate: 20 }, duration: 2 },
-        greenCircuit: { products: { greenCircuit: 1 }, costs: { copperCable: 10, copperPlate: 20 }, duration: 4 },
+        engine: { products: { engine: 1 }, costs: { ironGear: 10, ironPlate: 20 }, duration: 8 },
+        greenCircuit: { products: { greenCircuit: 1 }, costs: { copperCable: 10, copperPlate: 20 }, duration: 10 },
     }
 
     storeCosts = {
-        ironMine1: { type: "mine", costs: [{ ironOre: 1 }, { ironPlate: 2 }, { ironPlate: 4 }], produces: "ironOre" },
+        ironOreMine1: { type: "mine", costs: [{ ironOre: 1 }, { ironPlate: 2 }, { ironPlate: 4 }], produces: "ironOre" },
+        copperOreMine1: { type: "mine", costs: [{ ironOre: 1 }, { ironPlate: 2 }, { ironPlate: 4 }], produces: "copperOre" },
+
         ironPlateFactory1: { type: "factory", costs: [{ ironOre: 10 }, { ironPlate: 20 }, { ironPlate: 40 }], produces: "ironPlate" },
-        ironChest1: { type: "storage", costs: [{ ironOre: 1 }, { ironPlate: 20 }, { ironPlate: 40 }], stores: "ironOre" },
+        copperPlateFactory1: { type: "factory", costs: [{ ironOre: 10 }, { ironPlate: 20 }, { ironPlate: 40 }], produces: "copperPlate" },
+        
+        
+        ironOreStorage1: { type: "storage", costs: [{ ironOre: 1 }, { ironPlate: 20 }, { ironPlate: 40 }], stores: "ironOre" },
+        copperOreStorage1: { type: "storage", costs: [{ ironOre: 1 }, { ironPlate: 20 }, { ironPlate: 40 }], stores: "copperOre" },
+
+        ironPlateStorage1: { type: "storage", costs: [{ ironOre: 1 }, { ironPlate: 20 }, { ironPlate: 40 }], stores: "ironPlate" },
     }
 
-    buyingLevels = {
-        ironMine1: 1,
-        ironPlateFactory1: 1,
-        ironChest1: 1
-    }
+    buyingLevels = {};
 
     timeSinceLastProduction;
     framerate;
@@ -475,8 +482,8 @@ class Game {
         this.gameGrid = new GameGrid({ game: this, gridWidth: 10, gridHeight: 10, gameWindowSize: gameWindowSize })
         document.getElementById("gameContainer").appendChild(this.pixiApp.view);
 
-        this.gameGrid.setupNewGameWithMap(this.gameGrid.gridMap1);
-        // this.gameGrid.setupNewBasicGame();
+        // this.gameGrid.setupNewGameWithMap(this.gameGrid.gridMap1);
+        this.gameGrid.setupNewRandomGame();
         this.gameGrid.drawGrid();
 
 
@@ -484,7 +491,7 @@ class Game {
         this.updateCountText();
 
         this.createStoreUI();
-        this.createRecipeUI();
+        // this.createRecipeUI();
         this.addTechTreeItem(this.techTree.expansion3);
 
         this.pixiApp.stage.interactive = true;
@@ -494,16 +501,9 @@ class Game {
 
         this.placeCommandCenter();
 
-        // TODO figure out why the fuck the first factory if built after a mine doesn't show recipe sprite - for now, make one and delete 
-        // this.addProductsToInventory(this.factoryCosts[0]);
-        // this.handleBuy("factory");
-        // this.factories[0].sprite.parent.removeChild(this.factories[0].sprite);
-        // this.factories.splice(0, 1);
-
-
-
         if (this.debug) {
-            this.inventory["ironOre"] = 10000
+            this.inventory["ironOre"] = 10000;
+            this.inventory["ironPlate"] = 99;
         }
 
         this.pixiApp.ticker.add(dt => {
@@ -594,7 +594,7 @@ class Game {
                             return false;
                         } else {
                             //merge! 
-                            // TODO merging can cause a resource to go negative - if 
+                            // TODO merging can cause a resource to go negative
                             console.log("merging ", thing, " with ", self.dragEntity);
 
                             thing.sprite.parent.removeChild(thing.sprite);
@@ -652,6 +652,10 @@ class Game {
 
 
     initializeInventoryAndRates() {
+        for(let aStoreItem in this.storeCosts){
+            this.buyingLevels[aStoreItem] = 1;
+        }
+        
         for (const anOre in this.ores) {
             this.inventory[anOre] = 0;
             this.rates[anOre] = 0;
@@ -681,20 +685,20 @@ class Game {
         }
 
         if (item.type == "mine") {
-            let mine = new Mine({ game: this, level: level, placingBlock: placingBlock, recipe: item.produces });
+            let mine = new Mine({ game: this, level: level, placingBlock: placingBlock, recipe: item.produces, tier: 1 });
             this.mines.push(mine);
         } else if (item.type == "factory") {
-            let factory = new Factory({ game: this, level: level, placingBlock: placingBlock, recipe: item.produces });
+            let factory = new Factory({ game: this, level: level, placingBlock: placingBlock, recipe: item.produces, tier: 1 });
             this.factories.push(factory);
         } else if (item.type == "storage") {
-            let storage = new Storage({ game: this, level: level, placingBlock: placingBlock, recipe: item.stores });
+            let storage = new Storage({ game: this, level: level, placingBlock: placingBlock, recipe: item.stores, tier: 1 });
             this.storages.push(storage);
         }
     }
 
     placeCommandCenter() {
-        let placingBlock = this.gameGrid.blocks[this.gameGrid.gridHeight / 2][this.gameGrid.gridWidth / 2];
-        let command = new CommandCenter({ game: this, level: 1, placingBlock: placingBlock });
+        let placingBlock = this.gameGrid.blocks[Math.floor(this.gameGrid.gridHeight / 2)][Math.floor(this.gameGrid.gridWidth / 2)];
+        this.commandCenter = new CommandCenter({ game: this, level: 1, placingBlock: placingBlock });
 
     }
 
@@ -708,12 +712,21 @@ class Game {
     addProductsToInventory(products, multiplier) {
         if (!multiplier) { multiplier = 1 }
         for (const aProduct in products) {
-            // if(!products[aProduct]){
-            //     products[aProduct] = 0;
-            // }
+            if(!products[aProduct]){
+                products[aProduct] = 0;
+            }
             this.inventory[aProduct] += products[aProduct] * multiplier;
-
         }
+    }
+
+    checkIfCanAddToInventory(products, multiplier){
+        if (!multiplier) { multiplier = 1 }
+        for (const aProduct in products) {
+            if(this.inventory[aProduct] + products[aProduct] > this.storage[aProduct]){
+                return false;
+            }
+        }
+        return true;
     }
 
     checkIfCanBuy(costs, multiplier) {
@@ -726,13 +739,6 @@ class Game {
         return true;
     }
 
-    createRecipeUI() {
-        this.addRecipeUIElement("deselect");
-
-        for (const aRecipe in this.recipes) {
-            this.addRecipeUIElement(aRecipe);
-        }
-    }
 
 
     ///////////////////////////////////////////////
@@ -743,7 +749,7 @@ class Game {
     productionIncrement(amountTime) {
         for (const index in this.mines) {
             let aMine = this.mines[index]
-            if (aMine.onBlock.type != "dirt") {
+            if (aMine.onBlock.type != "dirt" && aMine.onBlock.type == aMine.recipe) {
                 this.inventory[aMine.onBlock.type] += (aMine.power() / this.ores[aMine.onBlock.type].duration) * amountTime;
             }
         }
@@ -752,19 +758,30 @@ class Game {
             if (aFactory.recipe) {
                 if (aFactory.crafting) {
                     aFactory.timeCrafting += amountTime;
+
                     if (aFactory.timeCrafting >= this.recipes[aFactory.recipe].duration) {
                         // console.log("Finished crafting, ", aFactory.recipe);
-                        // add the excess time to timeCrafting 
-                        aFactory.timeCrafting = aFactory.timeCrafting - this.recipes[aFactory.recipe].duration;
-                        aFactory.updateProgressBar();
 
-                        if (aFactory.timeCrafting >= this.recipes[aFactory.recipe].duration) {
-                            alert("increment pace > production time");
+                        if(this.checkIfCanAddToInventory(this.recipes[aFactory.recipe].products, aFactory.power())){
+                        
+                            // add the excess time to timeCrafting 
+                            aFactory.timeCrafting = aFactory.timeCrafting - this.recipes[aFactory.recipe].duration;
+                            aFactory.updateProgressBar();
+
+                            if (aFactory.timeCrafting >= this.recipes[aFactory.recipe].duration) {
+                                alert("increment pace > production time");
+                            }
+
+                            this.addProductsToInventory(this.recipes[aFactory.recipe].products, aFactory.power());
+                            aFactory.crafting = false;
+
+                        }else{
+                            //pause on finished if no storage for output - this does waste carryover but eh 
+                            aFactory.timeCrafting = this.recipes[aFactory.recipe].duration;
+                            aFactory.waitingAtFull = true;
                         }
-
-                        // this.inventory[aFactory.recipe] += 1;
-                        this.addProductsToInventory(this.recipes[aFactory.recipe].products, aFactory.power());
-                        aFactory.crafting = false;
+                    }else{
+                        aFactory.waitingAtFull = false;
                     }
                     aFactory.updateProgressBar();
                 }
@@ -799,7 +816,7 @@ class Game {
         for (const index in this.mines) {
             let aMine = this.mines[index]
 
-            if (aMine.onBlock.type != "dirt") {
+            if (aMine.onBlock.type != "dirt" && aMine.onBlock.type == aMine.recipe) {
                 this.rates[aMine.onBlock.type] += (aMine.power() / this.ores[aMine.onBlock.type].duration);
             }
 
@@ -807,7 +824,7 @@ class Game {
 
         for (const index in this.factories) {
             let aFactory = this.factories[index];
-            if (aFactory.crafting) {
+            if (aFactory.crafting && aFactory.waitingAtFull != true) {
                 //add products to rates 
                 for (const aProduct in this.recipes[aFactory.recipe].products) {
                     this.rates[aProduct] += this.recipes[aFactory.recipe].products[aProduct] * aFactory.power() / this.recipes[aFactory.recipe].duration;
@@ -824,7 +841,7 @@ class Game {
     ////////    UI    /////////////
     ///////////////////////////////
 
-
+/*
     addRecipeUIElement(recipeName) {
         let newRecipeUIElement = document.createElement('img');
         newRecipeUIElement.setAttribute("class", "recipeIcon");
@@ -835,8 +852,16 @@ class Game {
         }
 
         document.getElementById("recipesGrid").append(newRecipeUIElement);
-
     }
+
+    createRecipeUI() {
+        this.addRecipeUIElement("deselect");
+
+        for (const aRecipe in this.recipes) {
+            this.addRecipeUIElement(aRecipe);
+        }
+    }
+    */ 
 
     setCountUIHiddenOrShown() {
         for (const aType in this.ores) {
@@ -943,6 +968,8 @@ class Game {
         }
     }
 
+    
+
     /// Tech rendering 
     addTechTreeItem(item) {
         let newItemUIElement = document.createElement('div');
@@ -964,6 +991,22 @@ class Game {
     ///////////////////////////////
     ////////    Utility    ////////
     ///////////////////////////////
+
+    updateSizeOfDragables(){
+        let allEntities = this.mines.concat(this.factories).concat(this.storages);
+        allEntities.push(this.commandCenter);
+        
+        // allEntities.every((thing) => {
+        for(let thingIndex in allEntities){
+            let thing = allEntities[thingIndex];
+            console.log("updating size and location of ", thing);
+            thing.sprite.x = thing.onBlock.sprite.x  + (this.gameGrid.blockSize / 2);
+            thing.sprite.y = thing.onBlock.sprite.y  + (this.gameGrid.blockSize / 2);
+            thing.sprite.width = this.gameGrid.blockSize;
+            thing.sprite.height = this.gameGrid.blockSize;    
+        }
+        // });
+    }
 
     formatNumber(inputNum) {
         if (inputNum < 1000) { // 1000
@@ -1014,11 +1057,6 @@ class Game {
 
 }
 
-function getRecipeFromName(aName) {
-    if (aName == "ironPlate1") {
-
-    }
-}
 
 function removeItem(arr, value) {
     var index = arr.indexOf(value);
