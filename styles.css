@@ -4,7 +4,7 @@ div {
 
 .storeItemContainer{
     border: 1px solid red;
-    text-align: right;
+    text-align: center;
     vertical-align: bottom;
     position: relative;
     padding-bottom: 15px;
@@ -14,7 +14,21 @@ div {
 .storeImage{
     width: 100%;
     height: auto;
-    align-self: left;
+    align-self: center;
+}
+
+.techTreeItemContainer{
+    border: 1px solid red;
+    text-align: center;
+    vertical-align: bottom;
+    position: relative;
+    padding-bottom: 15px;
+}
+
+.techImage{
+    width: 100%;
+    height: auto;
+    align-self: center;
 }
 
 .greyedOut{
@@ -51,10 +65,16 @@ div {
     width: 50px;
 }
 
+#techTreeContainer {
+    display: grid;
+    grid-template-columns: 22% 22% 22% 22%;
+    grid-gap: 10px;    
+}
+
 
 #storeItemsContainer {
     display: grid;
-    grid-template-columns: 25% 25% 25% 25%;
+    grid-template-columns: 22% 22% 22% 22%;
     grid-gap: 10px;
 }
 
