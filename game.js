@@ -33,12 +33,12 @@ class GameGrid {
 
     gridMap1 = [
         ["D", "D", "D", "D", "D", "D", "D", "D", "D", "D", "D"],
-        ["D", "D", "I", "I", "D", "D", "D", "D", "D", "D", "D"],
-        ["D", "I", "D", "D", "D", "I", "D", "D", "D", "D", "D"],
-        ["D", "I", "D", "D", "C", "C", "D", "D", "C", "D", "D"],
+        ["D", "D", "I", "I", "I", "D", "D", "D", "D", "D", "D"],
+        ["D", "I", "D", "D", "D", "I", "I", "D", "D", "D", "D"],
+        ["D", "I", "D", "D", "C", "C", "I", "D", "C", "D", "D"],
         ["D", "D", "C", "D", "D", "C", "D", "D", "D", "D", "D"],
-        ["D", "D", "D", "D", "D", "O", "D", "D", "D", "D", "D"],
-        ["D", "D", "D", "D", "D", "D", "D", "D", "C", "D", "D"],
+        ["D", "D", "D", "D", "D", "A", "D", "D", "D", "D", "D"],
+        ["D", "D", "D", "D", "D", "C", "O", "D", "C", "D", "D"],
         ["D", "D", "D", "D", "D", "D", "D", "D", "C", "D", "D"],
         ["D", "D", "I", "D", "D", "D", "D", "D", "D", "D", "D"],
         ["D", "D", "D", "D", "D", "D", "D", "D", "C", "D", "D"],
@@ -81,6 +81,10 @@ class GameGrid {
                 if (gridMap[y][x] == "O") {
                     this.blocks[y][x] = new Block({ game: this.game, type: "oil", occupied: false });
                 }
+                if (gridMap[y][x] == "A") {
+                    this.blocks[y][x] = new Block({ game: this.game, type: "coal", occupied: false });
+                }
+
             }
         }
     }
@@ -190,6 +194,9 @@ class GameGrid {
                 if (gridMap[y][this.gridWidth] == "O") {
                     pickedType = "oil"
                 }
+                if (gridMap[y][this.gridWidth] == "A") {
+                    pickedType = "coal"
+                }
             }else{
                 alert("fuckup in expandGrid")
             }
@@ -222,6 +229,9 @@ class GameGrid {
                 if (gridMap[this.gridHeight][x] == "O") {
                     pickedType = "oil"
                 }
+                if (gridMap[this.gridHeight][x] == "A") {
+                    pickedType = "coal"
+                }
             }else{
                 alert("fuckup in expandGrid")
             }
@@ -247,15 +257,15 @@ class Dragable {
     recipe;
     storeName;
 
-    constructor({ game, level, placingBlock, recipe , storeName}) {
+    constructor({ game, level, placingBlock, storeName}) {
+        
         this.sprite = PIXI.Sprite.from("graphics/mine.png");
-
+        
         this.levelWhenStartedCrafting = level;
         this.onBlock = placingBlock;
         this.level = level;
-        this.recipe = recipe;
         this.storeName = storeName;
-
+        
         this.sprite.x = placingBlock.x * game.gameGrid.blockSize + (game.gameGrid.blockSize / 2);
         this.sprite.y = placingBlock.y * game.gameGrid.blockSize + (game.gameGrid.blockSize / 2);
         this.sprite.width = game.gameGrid.blockSize;
@@ -305,12 +315,17 @@ class Dragable {
 class Mine extends Dragable {
     paused;
     mining; 
-    constructor({ game, level, placingBlock, recipe, storeName }) {
+    powerUse;
 
+
+    constructor({ game, level, placingBlock, storeName }) {
+    
         console.log("buying mine at location ", placingBlock, placingBlock.x, ", ", placingBlock.y)
 
-        super({ game, level, placingBlock, recipe, storeName });
+        super({ game, level, placingBlock, storeName });
+        this.recipe = game.storeCosts[storeName].produces;
 
+        this.powerUse = game.storeCosts[storeName].powerUse;
         this.type = "mine";
         this.mining = true;
         this.paused = false;
@@ -329,12 +344,17 @@ class Factory extends Dragable {
     levelWhenStartedCrafting;
     waitingAtFull; 
     paused;
+    powerUse; 
 
-    constructor({ game, level, placingBlock, recipe, storeName }) {
+    constructor({ game, level, placingBlock, storeName }) {
 
         console.log("buying factory at location ", placingBlock, placingBlock.x, ", ", placingBlock.y)
 
-        super({ game, level, placingBlock, recipe, storeName });
+        super({ game, level, placingBlock, storeName });
+
+        this.powerUse = game.storeCosts[storeName].powerUse;
+        this.recipe = game.storeCosts[storeName].produces;
+
 
         this.type = "factory";
         this.timeCrafting = 0;
@@ -396,13 +416,14 @@ class Factory extends Dragable {
 class Storage extends Dragable {
     stores;
 
-    constructor({ game, level, placingBlock, recipe, storeName }) {
+    constructor({ game, level, placingBlock, storeName }) {
 
         console.log("buying factory at location ", placingBlock, placingBlock.x, ", ", placingBlock.y)
 
         super({ game, level, placingBlock, storeName });
 
-        this.stores = recipe;
+
+        this.stores = game.storeCosts[storeName].stores;
 
         this.type = "storage"
 
@@ -467,8 +488,9 @@ class Game {
     countIconSize = 50;
 
     inventory = {};
-    rates = {}
-    storage = {}
+    rates = {};
+    storage = {};
+    energy;
 
     buyMineLevelSet = 1;
     buyFactoryLevelSet = 1;
@@ -487,23 +509,29 @@ class Game {
             }
         },
         expansion6: {
-            name: "expansion6", costs: { science1: 200, science2: 50 }, prerequisites: ["expansion5"], enact: () => {
+            name: "expansion6", costs: { science1: 500, science2: 25 }, prerequisites: ["science2Lab1", "expansion5"], enact: () => {
                 this.gameGrid.expandGridDownRight1("map")
             }
         },
         expansion7: {
-            name: "expansion7", costs: { science1: 500, science2: 200 }, prerequisites: ["expansion6"], enact: () => {
+            name: "expansion7", costs: { science1: 1000, science2: 200 }, prerequisites: ["expansion6"], enact: () => {
                 this.gameGrid.expandGridDownRight1("map")
             }
         },
+        expansion8: {
+            name: "expansion8", costs: { science1: 2000, science2: 500, science3: 10 }, prerequisites: ["expansion7", "science3Lab1"], enact: () => {
+                this.gameGrid.expandGridDownRight1("map")
+            }
+        },
+
         copperOreMine1: {
-            name: "copperOreMine1", costs: { science1: 100 }, prerequisites: ["expansion5"], enact: () => {
+            name: "copperOreMine1", costs: { science1: 50 }, prerequisites: ["expansion5"], enact: () => {
                 this.buyingLevels["copperOreMine1"] = 1;
                 this.addStoreItem("copperOreMine1");
             }
         },
         copperPlateFactory1: {
-            name: "copperPlateFactory1", costs: { science1: 50 }, prerequisites: ["copperOreMine1"], enact: () => {
+            name: "copperPlateFactory1", costs: { science1: 75 }, prerequisites: ["copperOreMine1"], enact: () => {
                 this.buyingLevels["copperPlateFactory1"] = 1;
                 this.addStoreItem("copperPlateFactory1");
             }
@@ -515,29 +543,11 @@ class Game {
             }
         },
         greenCircuitFactory1: {
-            name: "greenCircuitFactory1", costs: { science1: 200 }, prerequisites: ["copperCableFactory1"], enact: () => {
+            name: "greenCircuitFactory1", costs: { science1: 150 }, prerequisites: ["copperCableFactory1"], enact: () => {
                 this.buyingLevels["greenCircuitFactory1"] = 1;
                 this.addStoreItem("greenCircuitFactory1");
             }
         },
-        oilMine1: {
-            name: "oilMine1", costs: { science2: 20 }, prerequisites: ["expansion6"], enact: () => {
-                this.buyingLevels["oilMine1"] = 1;
-                this.addStoreItem("oilMine1");
-            }
-        },
-        oilProcessing1Factory1: {
-            name: "oilProcessing1Factory1", costs: { science2: 100 }, prerequisites: ["oilMine1"], enact: () => {
-                this.buyingLevels["oilProcessing1Factory1"] = 1;
-                this.addStoreItem("oilProcessing1Factory1");
-            }
-        },
-        // : {
-        //     name: "", costs: { science1: 5 }, prerequisites: [""], enact: () => {
-        //         this.buyingLevels[""] = 1;
-        //         this.addStoreItem("");
-        //     }
-        // },
         engineFactory1: {
             name: "engineFactory1", costs: { science1: 50 }, prerequisites: [], enact: () => {
                 this.buyingLevels["engineFactory1"] = 1;
@@ -545,11 +555,133 @@ class Game {
             }
         },
         science2Lab1: {
-            name: "science2Lab1", costs: { science1: 50 }, prerequisites: ["engineFactory1", "greenCircuitFactory1"], enact: () => {
+            name: "science2Lab1", costs: { science1: 150 }, prerequisites: ["engineFactory1", "greenCircuitFactory1"], enact: () => {
                 this.buyingLevels["science2Lab1"] = 1;
                 this.addStoreItem("science2Lab1");
             }
         },
+
+        // windEnergyFactory1: {
+        //     name: "windEnergyFactory1", costs: { science1: 50 }, prerequisites: [], enact: () => {
+        //         this.buyingLevels["windEnergyFactory1"] = 1;
+        //         this.addStoreItem("windEnergyFactory1");
+        //     }
+        // },
+        coalMine1: {
+            name: "coalMine1", costs: { science2: 20 }, prerequisites: ["science2Lab1", "expansion6"], enact: () => {
+                this.buyingLevels["coalMine1"] = 1;
+                this.addStoreItem("coalMine1");
+            }
+        },
+        steelFactory1: {
+            name: "steelFactory1", costs: { science2: 50 }, prerequisites: ["coalMine1"], enact: () => {
+                this.buyingLevels["steelFactory1"] = 1;
+                this.addStoreItem("steelFactory1");
+            }
+        },
+        oilMine1: {
+            name: "oilMine1", costs: { science2: 20 }, prerequisites: ["expansion7", "science2Lab1"], enact: () => {
+                this.buyingLevels["oilMine1"] = 1;
+                this.addStoreItem("oilMine1");
+            }
+        },
+        oilProcessing1Factory1: {
+            name: "oilProcessing1Factory1", costs: { science2: 50 }, prerequisites: ["oilMine1"], enact: () => {
+                this.buyingLevels["oilProcessing1Factory1"] = 1;
+                this.addStoreItem("oilProcessing1Factory1");
+            }
+        },
+        plasticFactory1: {
+            name: "plasticFactory1", costs: { science2: 100 }, prerequisites: ["oilProcessing1Factory1"], enact: () => {
+                this.buyingLevels["plasticFactory1"] = 1;
+                this.addStoreItem("plasticFactory1");
+            }
+        },
+        redCircuitFactory1: {
+            name: "redCircuitFactory1", costs: { science2: 100 }, prerequisites: ["plasticFactory1"], enact: () => {
+                this.buyingLevels["redCircuitFactory1"] = 1;
+                this.addStoreItem("redCircuitFactory1");
+            }
+        },
+        science3Lab1: {
+            name: "science3Lab1", costs: { science2: 200 }, prerequisites: ["plasticFactory1", "greenCircuitFactory1"], enact: () => {
+                this.buyingLevels["science3Lab1"] = 1;
+                this.addStoreItem("science3Lab1");
+            }
+        },
+
+        //tier 3 
+
+        oilProcessing2Factory1: {
+            name: "oilProcessing2Factory1", costs: { science3: 10 }, prerequisites: ["science3Lab1"], enact: () => {
+                this.buyingLevels["oilProcessing2Factory1"] = 1;
+                this.addStoreItem("oilProcessing2Factory1");
+            }
+        },
+        heavyOilBreakdownFactory1: {
+            name: "heavyOilBreakdownFactory1", costs: { science3: 20 }, prerequisites: ["oilProcessing2Factory1"], enact: () => {
+                this.buyingLevels["heavyOilBreakdownFactory1"] = 1;
+                this.addStoreItem("heavyOilBreakdownFactory1");
+            }
+        },
+        lightOilBreakdownFactory1: {
+            name: "lightOilBreakdownFactory1", costs: { science3: 20 }, prerequisites: ["oilProcessing2Factory1"], enact: () => {
+                this.buyingLevels["lightOilBreakdownFactory1"] = 1;
+                this.addStoreItem("lightOilBreakdownFactory1");
+            }
+        },
+        
+        solidFuel1Factory1: {
+            name: "solidFuel1Factory1", costs: { science3: 30 }, prerequisites: ["oilProcessing2Factory1"], enact: () => {
+                this.buyingLevels["solidFuel1Factory1"] = 1;
+                this.addStoreItem("solidFuel1Factory1");
+            }
+        },
+        solidFuel2Factory1: {
+            name: "solidFuel2Factory1", costs: { science3: 30 }, prerequisites: ["oilProcessing2Factory1"], enact: () => {
+                this.buyingLevels["solidFuel2Factory1"] = 1;
+                this.addStoreItem("solidFuel2Factory1");
+            }
+        },
+        solidFuel3Factory1: {
+            name: "solidFuel3Factory1", costs: { science3: 30 }, prerequisites: ["oilProcessing2Factory1"], enact: () => {
+                this.buyingLevels["solidFuel3Factory1"] = 1;
+                this.addStoreItem("solidFuel3Factory1");
+            }
+        },
+        rocketFuelFactory1: {
+            name: "rocketFuelFactory1", costs: { science3: 50 }, prerequisites: ["oilProcessing2Factory1"], enact: () => {
+                this.buyingLevels["rocketFuelFactory1"] = 1;
+                this.addStoreItem("rocketFuelFactory1");
+            }
+        },
+
+        purpleCircuitFactory1:{
+            name: "purpleCircuitFactory1", costs: { science3: 100 }, prerequisites: ["science3Lab1"], enact: () => {
+                this.buyingLevels["purpleCircuitFactory1"] = 1;
+                this.addStoreItem("purpleCircuitFactory1");
+            }
+        },
+        lowDensityStructureFactory1:{
+            name: "lowDensityStructureFactory1", costs: { science3: 100 }, prerequisites: ["science3Lab1"], enact: () => {
+                this.buyingLevels["lowDensityStructureFactory1"] = 1;
+                this.addStoreItem("lowDensityStructureFactory1");
+            }
+        },
+
+        rocketPartFactory1: {
+            name: "rocketPartFactory1", costs: { science3: 200 }, prerequisites: ["purpleCircuitFactory1", "lowDensityStructureFactory1", "rocketFuelFactory1"], enact: () => {
+                this.buyingLevels["rocketPartFactory1"] = 1;
+                this.addStoreItem("rocketPartFactory1");
+            }
+        },
+
+        // : {
+        //     name: "", costs: { science1: 5 }, prerequisites: [""], enact: () => {
+        //         this.buyingLevels[""] = 1;
+        //         this.addStoreItem("");
+        //     }
+        // },
         ironOreStorage1: {
             name: "ironOreStorage1", costs: { science1: 5 }, prerequisites: [], enact: () => {
                 this.buyingLevels["ironOreStorage1"] = 1;
@@ -593,24 +725,45 @@ class Game {
             }
         },
         science2Storage1: {
-            name: "science2Storage1", costs: { science1: 10, science2: 5 }, prerequisites: ["science2Lab1"], enact: () => {
+            name: "science2Storage1", costs: { science2: 10, science2: 5 }, prerequisites: ["science2Lab1"], enact: () => {
                 this.buyingLevels["science2Storage1"] = 1;
                 this.addStoreItem("science2Storage1");
             }
         },
+        coalStorage1: {
+            name: "coalStorage1", costs: { science2: 50 }, prerequisites: ["coalMine1"], enact: () => {
+                this.buyingLevels["coalStorage1"] = 1;
+                this.addStoreItem("coalStorage1");
+            }
+        },
+        steelStorage1: {
+            name: "steelStorage1", costs: { science2: 10 }, prerequisites: ["steelFactory1"], enact: () => {
+                this.buyingLevels["steelStorage1"] = 1;
+                this.addStoreItem("steelStorage1");
+            }
+        },
         oilStorage1: {
-            name: "oilStorage1", costs: { science2: 20 }, prerequisites: ["oilMine1"], enact: () => {
+            name: "oilStorage1", costs: { science2: 50 }, prerequisites: ["oilMine1"], enact: () => {
                 this.buyingLevels["oilStorage1"] = 1;
                 this.addStoreItem("oilStorage1");
             }
         },
-        // //////
-        // ironPlateFactory1: {
-        //     name: "oilStorage1", costs: { science2: 20 }, prerequisites: ["oilMine1"], enact: () => {
-        //         this.buyingLevels["oilStorage1"] = 1;
-        //         this.addStoreItem("oilStorage1");
+        science3Storage1: {
+            name: "science3Storage1", costs: { science3: 5 }, prerequisites: ["oilMine1"], enact: () => {
+                this.buyingLevels["science3Storage1"] = 1;
+                this.addStoreItem("science3Storage1");
+            }
+        },
+
+
+        //todo storage for tier 3 
+        // energyStorage1: {
+        //     name: "energyStorage1", costs: { science2: 50 }, prerequisites: ["science2Lab1"], enact: () => {
+        //         this.buyingLevels["energyStorage1"] = 1;
+        //         this.addStoreItem("energyStorage1");
         //     }
         // },
+        // //////
         ironOreMine1Level2: {
             name: "ironOreMine1Level2", costs: { science1: 25 }, prerequisites: ["expansion5"], enact: () => {
                 this.buyingLevels["ironOreMine1"] = 2;
@@ -625,28 +778,72 @@ class Game {
         },
     }
 
-
     ores = {
         ironOre: { duration: 1 },
         copperOre: { duration: 2 },
-        oil: {duration: 5}
+        coal: {duration: 4},
+        oil: {duration: 0.2},
     }
 
     recipes = { // V5
-        ironPlate: { products: { ironPlate: 1 }, costs: { ironOre: 2 }, duration: 1 },
-        ironGear: { products: { ironGear: 1 }, costs: { ironPlate: 2 }, duration:  4},
+        ironPlate: { products: { ironPlate: 1 }, costs: { ironOre: 1 }, duration: 1 },
+        ironGear: { products: { ironGear: 1 }, costs: { ironPlate: 2 }, duration:  2},
 
         copperPlate: { products: { copperPlate: 1 }, costs: { copperOre: 2 }, duration: 2 },
         copperCable: { products: { copperCable: 1 }, costs: { copperPlate: 2 }, duration: 4 },
 
-        engine: { products: { engine: 1 }, costs: { ironPlate: 5, ironGear: 2 }, duration: 8 },
-        greenCircuit: { products: { greenCircuit: 1 }, costs: { copperPlate: 5, copperCable: 2 }, duration: 10 },
+        engine: { products: { engine: 1 }, costs: { ironPlate: 4, ironGear: 2}, duration: 8 },
+        greenCircuit: { products: { greenCircuit: 1 }, costs: { copperPlate: 2, copperCable: 1 }, duration: 5 },
+
+        oilProcessing1: { products: { petroleum: 15 }, costs: { oil: 50 }, duration: 5 },
+        // steel: { products: { steel: 1 }, costs: { ironPlate:  20, coal: 5}, duration: 5 },
+        // plastic: { products: { plastic: 1 }, costs: { petroleum:  50, coal: 4}, duration: 5 },
+        // redCircuit: { products: { redCircuit: 1 }, costs: { greenCircuit:  20, plastic: 5}, duration: 5 },
+
+        steel: { products: { steel: 1 }, costs: { ironPlate:  2, coal: 4}, duration: 5 },
+        plastic: { products: { plastic: 1 }, costs: { petroleum:  10, coal: 2}, duration: 5 },
+        redCircuit: { products: { redCircuit: 1 }, costs: { greenCircuit:  5, plastic: 2}, duration: 5 },
+
+        oilProcessing2: { products: { petroleum: 5, lightOil: 10, heavyOil: 15 }, costs: { oil: 50 }, duration: 6 },
+        heavyOilBreakdown: { products: { petroleum: 20, lightOil: 40 }, costs: { heavyOil: 30 }, duration: 3 },
+        lightOilBreakdown: { products: { petroleum: 60 }, costs: { lightOil: 40 }, duration: 3 },
+        
+        solidFuel1: { products: { solidFuel: 1 }, costs: { petroleum: 80 }, duration: 4 },
+        solidFuel2: { products: { solidFuel: 1 }, costs: { lightOil: 40 }, duration: 4 },
+        solidFuel3: { products: { solidFuel: 1 }, costs: { heavyOil: 30 }, duration: 4 },
+        rocketFuel: { products: { solidFuel: 1 }, costs: { lightOil: 40, solidFuel: 10 }, duration: 6 },
+
+        purpleCircuit: { products: { purpleCircuit: 1 }, costs: { redCircuit: 2, greenCircuit: 10 }, duration: 10 },
+        lowDensityStructure: { products: { lowDensityStructure: 1 }, costs: { steel: 5, plastic: 10, copperPlate: 20 }, duration: 10 },
+
+        rocketPart: { products: { rocketPart: 1 }, costs: { rocketFuel: 1, lowDensityStructure: 1,  purpleCircuit: 1}, duration: 20 },
+        
+        science1: { products: { science1: 1 }, costs: { ironGear: 2, ironPlate: 5 }, duration: 5},
+        science2: { products: { science2: 1 }, costs: { engine: 2, greenCircuit: 1 }, duration: 10},
+        science3: { products: { science3: 1 }, costs: { steel: 5, redCircuit: 2 }, duration: 20},
+        science4: { products: { science4: 1 }, costs: { rocketFuel: 5, purpleCircuit: 2,  }, duration: 20},
+
+        // windEnergy1: { products: { energy: 5 }, costs: {  }, duration: 1},
+    }
+
+   //exponential recipes  
+   /*
+    recipes = { // exponential 
+        ironPlate: { products: { ironPlate: 1 }, costs: { ironOre: 2 }, duration: 1 },
+        ironGear: { products: { ironGear: 1 }, costs: { ironPlate: 4 }, duration:  2},
+
+        copperPlate: { products: { copperPlate: 1 }, costs: { copperOre: 4 }, duration: 2 },
+        copperCable: { products: { copperCable: 1 }, costs: { copperPlate: 8 }, duration: 4 },
+
+        engine: { products: { engine: 1 }, costs: { ironPlate: 8, ironGear: 4 }, duration: 8 },
+        greenCircuit: { products: { greenCircuit: 1 }, costs: { copperPlate: 4, copperCable: 2 }, duration: 8 },
 
         oilProcessing1: { products: { petroleum: 50, lightOil: 40, heavyOil: 10 }, costs: { oil: 100 }, duration: 10 },
 
-        science1: { products: { science1: 1 }, costs: { ironGear: 5, ironPlate: 10 }, duration: 5},
-        science2: { products: { science2: 1 }, costs: { engine: 2, greenCircuit: 1 }, duration: 10},
+        science1: { products: { science1: 1 }, costs: { ironGear: 8, ironPlate: 16 }, duration: 5},
+        science2: { products: { science2: 1 }, costs: { engine: 16, greenCircuit: 16 }, duration: 10},
     }
+    */ 
 
     // storeCosts = {
     //     ironOreMine1: { type: "mine", costs: { ironOre: 1 }, produces: "ironOre" },
@@ -666,37 +863,73 @@ class Game {
     // }
 
     storeCosts = {
-        ironOreMine1: { type: "mine", costs: { ironOre: 10 }, produces: "ironOre" },
-        ironPlateFactory1: { type: "factory", costs: { ironOre: 20 }, produces: "ironPlate" },
-        ironGearFactory1: { type: "factory", costs: { ironPlate: 10 }, produces: "ironGear" },
+        //science 1 stuff 
+        ironOreMine1: { type: "mine", costs: { ironOre: 10 }, produces: "ironOre", multiplier: 1, powerUse: 6},
+        ironPlateFactory1: { type: "factory", costs: { ironOre: 20 }, produces: "ironPlate", multiplier: 1, powerUse: .4 },
+        ironGearFactory1: { type: "factory", costs: { ironPlate: 10 }, produces: "ironGear", multiplier: 1, powerUse: .5},
+        science1Lab1: { type: "factory", costs: { ironGear: 10 }, produces: "science1", multiplier: 1, powerUse: 1 },
         
-        engineFactory1: { type: "factory", costs: {ironGear: 10 }, produces: "engine" },
+        //tier 2 stuff 
+        engineFactory1: { type: "factory", costs: {ironGear: 10 }, produces: "engine", multiplier: 1, powerUse: 1},
 
-        copperOreMine1: { type: "mine", costs: { copperOre: 10 }, produces: "copperOre" },
-        copperPlateFactory1: { type: "factory", costs: { copperOre: 20 }, produces: "copperPlate" },
-        copperCableFactory1: { type: "factory", costs: { copperPlate: 10 }, produces: "copperCable" },
+        copperOreMine1: { type: "mine", costs: { copperOre: 10 }, produces: "copperOre", multiplier: 1, powerUse: .5 },
+        copperPlateFactory1: { type: "factory", costs: { copperOre: 20 }, produces: "copperPlate", multiplier: 1, powerUse: 1 },
+        copperCableFactory1: { type: "factory", costs: { copperPlate: 10 }, produces: "copperCable", multiplier: 1, powerUse: 2 },
 
-        greenCircuitFactory1: { type: "factory", costs: { copperCable: 10 }, produces: "greenCircuit" },
+        greenCircuitFactory1: { type: "factory", costs: { copperCable: 10 }, produces: "greenCircuit", multiplier: 1, powerUse: 3 },
 
-        science1Lab1: { type: "factory", costs: { ironGear: 10 }, produces: "science1" },
-        science2Lab1: { type: "factory", costs: { greenCircuit: 10 }, produces: "science2" },
+        science2Lab1: { type: "factory", costs: { greenCircuit: 10 }, produces: "science2", multiplier: 1, powerUse: 3 },
 
-        oilMine1: { type: "mine", costs: { engine: 5 }, produces: "oil" },
-        oilProcessing1Factory1: { type: "factory", costs: { engine: 3 }, produces: "oilProcessing1" },
+        //science 3 stuff  
+        coalMine1: { type: "mine", costs: { ironGear: 5 }, produces: "coal", multiplier: 1, powerUse: 1 }, 
+        steelFactory1: { type: "factory", costs: { engine: 5 }, produces: "steel", multiplier: 1, powerUse: 5 },
+        
+        oilMine1: { type: "mine", costs: { engine: 5 }, produces: "oil", multiplier: 1, powerUse: 3 },
+        oilProcessing1Factory1: { type: "factory", costs: { engine: 10 }, produces: "oilProcessing1", multiplier: 1, powerUse: 5 },
+        plasticFactory1: { type: "factory", costs: { steel: 2 }, produces: "plastic", multiplier: 1, powerUse: 2 },
+        
+        redCircuitFactory1: { type: "factory", costs: { plastic: 5 }, produces: "redCircuit", multiplier: 1, powerUse: 5 },
+        
+        science3Lab1: { type: "factory", costs: { steel: 10 }, produces: "science3", multiplier: 1, powerUse: 10 },
 
+        //tier 2 buildings 
+        // ironOreMine2: { type: "mine", costs: { ironOre: 10 }, produces: "ironOre", multiplier: 1, powerUse: 6},
+        // ironPlateFactory2: { type: "factory", costs: { ironOre: 20 }, produces: "ironPlate", multiplier: 1, powerUse: .4 },
+        // ironGearFactory2: { type: "factory", costs: { ironPlate: 10 }, produces: "ironGear", multiplier: 1, powerUse: .5},
+        
+        oilProcessing2Factory1: { type: "factory", costs: { plastic: 5 }, produces: "oilProcessing2", multiplier: 1, powerUse: 1 },
+        heavyOilBreakdownFactory1: { type: "factory", costs: { plastic: 5 }, produces: "heavyOilBreakdown", multiplier: 1, powerUse: 1 },
+        lightOilBreakdownFactory1: { type: "factory", costs: { plastic: 5 }, produces: "lightOilBreakdown", multiplier: 1, powerUse: 1 },
+        
+        solidFuel1Factory1: { type: "factory", costs: { steel: 10 }, produces: "solidFuel1", multiplier: 1, powerUse: 1 },
+        solidFuel2Factory1: { type: "factory", costs: { steel: 10 }, produces: "solidFuel2", multiplier: 1, powerUse: 1 },
+        solidFuel3Factory1: { type: "factory", costs: { steel: 10 }, produces: "solidFuel3", multiplier: 1, powerUse: 1 },
+        rocketFuelFactory1: { type: "factory", costs: { steel: 20 }, produces: "rocketFuel", multiplier: 1, powerUse: 1 },
+
+        purpleCircuitFactory1:{ type: "factory", costs: { steel: 20 }, produces: "purpleCircuit", multiplier: 1, powerUse: 1 },
+        lowDensityStructureFactory1: { type: "factory", costs: { steel: 20 }, produces: "lowDensityStructure", multiplier: 1, powerUse: 1 },
+
+        rocketPartFactory1: { type: "factory", costs: { steel: 100 }, produces: "rocketPart", multiplier: 1, powerUse: 1 },
+        
+        //storage 
         ironOreStorage1: { type: "storage", costs: { ironOre: 20}, stores: "ironOre" },
         ironPlateStorage1: { type: "storage", costs: { ironPlate: 20 }, stores: "ironPlate" },
         ironGearStorage1: { type: "storage", costs: { ironGear: 10 }, stores: "ironGear" },
         engineStorage1: { type: "storage", costs: { engine: 10 }, stores: "engine" },
-
+        
         copperOreStorage1: { type: "storage", costs: { copperOre: 20 }, stores: "copperOre" },
         copperPlateStorage1: { type: "storage", costs: { copperPlate: 10 }, stores: "copperPlate" },
+        copperCableStorage1: { type: "storage", costs: { copperCable: 20 }, stores: "copperCable" },
         greenCircuitStorage1: { type: "storage", costs: { greenCircuit: 10 }, stores: "greenCircuit" },
-
+        
         oilStorage1: { type: "storage", costs: { greenCircuit: 10 }, stores: "oil" },
-
-        science1Storage1: { type: "storage", costs: { ironPlate: 100 }, stores: "science1" },
-        science2Storage1: { type: "storage", costs: { copperPlate: 100 }, stores: "science2" },
+        
+        science1Storage1: { type: "storage", costs: { ironPlate: 50 }, stores: "science1" },
+        science2Storage1: { type: "storage", costs: { copperPlate: 50 }, stores: "science2" },
+        science3Storage1: { type: "storage", costs: { steel: 50 }, stores: "science3" },
+        
+        // energyStorage1: { type: "storage", costs: { greenCircuit: 10 }, stores: "energy" },
+        //windEnergyFactory1: { type: "factory", costs: { ironGear: 5 }, produces: "windEnergy1", powerUse: 0 },
     }
 
     buyingLevels = {};
@@ -717,7 +950,7 @@ class Game {
     constructor() {
         self = this;
         this.initializeInventoryAndRates();
-
+        // this.inventory["energy"] = 100;
 
         let gameWindowSize = Math.min(window.innerWidth / 2, window.innerHeight);
         this.pixiApp = new PIXI.Application({ width: gameWindowSize, height: gameWindowSize, background: '#1099bb' });
@@ -738,6 +971,7 @@ class Game {
         this.buyingLevels["science1Lab1"] = 1;
         this.createStoreUI();
         // this.createRecipeUI();
+        
 
         this.createTechTree();
         // this.addTechTreeItem(this.techTree.expansion3);
@@ -753,24 +987,29 @@ class Game {
         this.placeCommandCenter();
 
         //debug section
+        this.debug = false;
         if (this.debug) {
-            // this.inventory["ironOre"] = 10000;
-            // this.inventory["ironPlate"] = 99;
-            // this.inventory["ironGear"] = 99;
-            // this.inventory["engine"] = 90;
-            // this.inventory["greenCircuit"] = 90;
-            // this.inventory.science1 = 100
+            this.inventory["ironOre"] = 10000;
+            this.inventory["ironPlate"] = 99;
+            this.inventory["ironGear"] = 99;
+            this.inventory["engine"] = 90;
+            this.inventory["greenCircuit"] = 90;
+            this.inventory.science1 = 100
+            this.inventory.science2 = 100
+            this.handleBuy(this.storeCosts["science1Lab1"], "science1Lab1")
 
             //make everything 1 iron 
             for(let aStoreItem in this.storeCosts){
-                // this.storeCosts[aStoreItem].costs  = {ironOre: 1}
+                this.storeCosts[aStoreItem].costs  = {ironOre: 1}
             }
 
             //make everything buyable 
             for(let aStoreItem in this.storeCosts){
-                // this.buyingLevels[aStoreItem] = 1;
-            }
-    
+                this.buyingLevels[aStoreItem] = 1;
+            } 
+            for(let aTechItem in this.techTree){
+                this.techTree[aTechItem].costs = {ironOre: 1};
+            }   
         }
 
         this.pixiApp.ticker.add(dt => {
@@ -864,13 +1103,25 @@ class Game {
                         } else {
                             //merge! 
                             // TODO merging can cause a resource to go negative
-                            //TODO P1 : when merging add the crafting times of both together and add the extra for the next level 
                             console.log("merging ", thing, " with ", self.dragEntity);
-                            //TODO: if one is not crafting, destroy that one instead to preserve progress 
-
+                            
+                            //TODO P1 : when merging add the crafting times of both together and add the extra for the next level 
+                            // if(self.dragEntity.type == "factory"){
+                            //     //add them together and if level up add half of leftovers as well 
+                            //     // let timeLeftOnCrafting = self.recipes[self.dragEntity.recipe].duration - self.dragEntity.timeCrafting 
+                            //     if(self.dragEntity.timeCrafting + thing.timeCrafting > self.recipes[self.dragEntity.recipe].duration){ //if combined finishes recipe 
+                            //         if(self.checkIfCanAddToInventory(self.recipes[self.dragEntity.recipe].products, self.dragEntity.power())){
+                            //             self.addProductsToInventory(self.recipes[self.dragEntity.recipe].products, self.dragEntity.power());
+                            //             self.dragEntity.timeCrafting = ((self.dragEntity.timeCrafting + thing.timeCrafting) - self.recipes[self.dragEntity.recipe].duration) / 2
+                            //         }else{
+                            //             self.dragEntity.timeCrafting = self.recipes[self.dragEntity.recipe].duration;
+                            //             aFactory.waitingAtFull = true;
+                            //         }
+                            //     }
+                            //     self.dragEntity.updateProgressBar();
+                            // }
 
                             thing.delete();
-                            
 
                             self.dragEntity.level += 1;
                             self.dragEntity.levelText.text = self.dragEntity.level;
@@ -927,6 +1178,7 @@ class Game {
 
                     this.inventory[aProduct] = 0;
                     this.rates[aProduct] = 0;
+                    console.log(aProduct);
                 }
             }
         }
@@ -940,7 +1192,7 @@ class Game {
             return;
         }
 
-        let level = this.buyingLevels[name]; //TODO: update to pull from the right level settings based on research 
+        let level = this.buyingLevels[name]; 
 
         if (this.checkIfCanBuy(item.costs, level)) {
             this.subtractCostFromInventory(item.costs, level);
@@ -950,13 +1202,13 @@ class Game {
         }
 
         if (item.type == "mine") {
-            let mine = new Mine({ game: this, level: level, placingBlock: placingBlock, recipe: item.produces, storeName: name });
+            let mine = new Mine({ game: this, level: level, placingBlock: placingBlock, storeName: name });
             this.mines.push(mine);
         } else if (item.type == "factory") {
-            let factory = new Factory({ game: this, level: level, placingBlock: placingBlock, recipe: item.produces, storeName: name });
+            let factory = new Factory({ game: this, level: level, placingBlock: placingBlock, storeName: name });
             this.factories.push(factory);
         } else if (item.type == "storage") {
-            let storage = new Storage({ game: this, level: level, placingBlock: placingBlock, recipe: item.stores, storeName: name });
+            let storage = new Storage({ game: this, level: level, placingBlock: placingBlock, storeName: name });
             this.storages.push(storage);
         }
     }
@@ -1012,6 +1264,12 @@ class Game {
                 products[aProduct] = 0;
             }
             this.inventory[aProduct] += products[aProduct] * multiplier;
+            // if(aProduct == "energy"){
+                // if(!this.energyStarved){
+                    // this.inventory[aProduct] += products[aProduct] * multiplier;
+                // }
+            // }else{
+            // }
         }
     }
 
@@ -1042,12 +1300,22 @@ class Game {
     ///////////////////////////////////////////////
     
     productionIncrement(amountTime) {
+        // this.updateEnergy(amountTime);
+
+        //command 
+        // if(!this.inventory["energy"]){
+            // this.inventory["energy"] = 0;
+        // }
+        // this.inventory["energy"] += 20 * amountTime;
+
+        //mines 
         for (const index in this.mines) {
             let aMine = this.mines[index]
             if (aMine.onBlock.type != "dirt" && aMine.onBlock.type == aMine.recipe && !aMine.paused) {
                 this.inventory[aMine.onBlock.type] += (aMine.power() / this.ores[aMine.onBlock.type].duration) * amountTime;
             }
         }
+        //factories 
         for (const index in this.factories) {
             let aFactory = this.factories[index];
             if (aFactory.recipe && !aFactory.paused) {
@@ -1097,6 +1365,64 @@ class Game {
         this.lastTimeProductionHappened = Date.now();
     }
 
+    updateEnergy(amountTime){
+        //calc total energy usage
+        this.energyUse = 0;
+        for (const index in this.mines) {
+            let aMine = this.mines[index]
+            if (aMine.onBlock.type != "dirt" && aMine.onBlock.type == aMine.recipe && !aMine.paused) {
+                let type = aMine.onBlock.type;
+                if(this.checkIfCanAddToInventory({type : 0.01})){
+                    // console.log(" mine is running, on a block, and that block can be added to inventory");
+                    this.energyUse += aMine.powerUse * aMine.power();
+                }
+            }
+        } 
+        for (const index in this.factories) {
+            let aFactory = this.factories[index];
+            if (aFactory.recipe && !aFactory.paused) {
+                if (aFactory.crafting && aFactory.waitingAtFull != true) {
+                    this.energyUse += aFactory.powerUse * aFactory.power();
+                }
+            }
+        }
+        document.getElementById("powerDemandText").innerHTML = "Usage: " + this.formatNumber(this.energyUse) + "/s ";
+
+        this.inventory["energy"] -= this.energyUse * amountTime;
+
+        let totalProducableEnergy = 20;//for command 
+        let currentProducedEnergy = 20; 
+        for (const index in this.factories) {
+            let aFactory = this.factories[index];
+            if(this.recipes[aFactory.recipe].products.energy){
+                console.log("a factory is producing energy amount ", this.recipes[aFactory.recipe].products.energy, " with power ", aFactory.power());
+                totalProducableEnergy += this.recipes[aFactory.recipe].products.energy * aFactory.power() / this.recipes[aFactory.recipe].duration;
+                if (aFactory.crafting && !aFactory.waitingAtFull && !aFactory.paused) {
+                    currentProducedEnergy += this.recipes[aFactory.recipe].products.energy * aFactory.power() / this.recipes[aFactory.recipe].duration;
+                }    
+            }
+        }
+
+        document.getElementById("powerProductionText").innerHTML = "Production: " + this.formatNumber(currentProducedEnergy);
+        this.rates["energy"] -= this.energyUse;
+
+        //if there is less than zero energy, slow production to be proportional to energy produced / energy used 
+        if(this.inventory.energy > 0){
+            document.getElementById("powerSatisfactionText").innerHTML = "Satisfaction: 100%"; 
+        }else{
+            document.getElementById("powerSatisfactionText").innerHTML = " Satisfaction" + this.formatNumber(currentProducedEnergy / this.energyUse * 100) + "%";
+            this.energyStarved = true;
+            this.inventory.energy = 0;
+        }
+        if(this.energyStarved && this.rates["energy"] > 0 && this.inventory.energy == 0){ //special case to escape stuck zero energy
+            this.inventory.energy = 1; 
+        }
+        if(this.rates["energy"] > 0){
+            this.energyStarved = false;
+        }
+        // console.log(multiplier)
+
+    }
 
     resetRates() {
         for (const aRate in this.rates) {
@@ -1104,9 +1430,15 @@ class Game {
         }
     }
 
-
     calcRates() {
         this.resetRates();
+        
+        //command & energy 
+        // this.rates.energy = 20;
+        // this.rates.grossEnergy = 20;
+        // this.rates.energy -= this.energyUse;
+
+        //mines 
         for (const index in this.mines) {
             let aMine = this.mines[index]
 
@@ -1128,6 +1460,9 @@ class Game {
                 }
             }
         }
+
+
+        
     }
 
     ///////////////////////////////
@@ -1206,6 +1541,7 @@ class Game {
             addedThings.push(anOre);
         }
         for(const index in this.allProducts){
+            
             const aProduct = this.allProducts[index]
             this.addCountUIElement(aProduct);
             addedThings.push(aProduct);
@@ -1383,7 +1719,9 @@ class Game {
                 document.getElementById("techTreeItem-" + aTechName).classList.remove("greyedOut");
             }else{
                 console.log(aTechName);
+                // if(document.getElementById("techTreeItem-" + aTechName)){
                 document.getElementById("techTreeItem-" + aTechName).classList.add("greyedOut");
+                // }
             }
         }
     }
@@ -1460,6 +1798,18 @@ class Game {
         }
     }
 
+    saveGameState(){
+        let gameData = {};
+        gameData.inventory = game.inventory;
+        gameData.factories = game.factories;
+    }
+
+    loadGameState(gameData){
+        game.inventory = gameData.inventory;
+
+        
+    }
+
 }
 
 
@@ -1482,3 +1832,4 @@ let game = new Game();
 // todo a setting to have newly placed factories on or off 
 // todo set the level value on store 
 //// todo oil rig will place on command 
+// todo don't use energy when mine is stuck on full 
